@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+
 import pytest
 
 from app.services import validation
@@ -103,6 +105,13 @@ class TestEngineStatus:
         fake = tmp_path / "kometa"
         (fake / "modules").mkdir(parents=True)
         (fake / "modules" / "validator.py").write_text("import definitely_missing_pkg\n", encoding="utf-8")
+
+        # Other tests import the real Kometa, leaving `modules` in sys.modules. Without
+        # evicting it the import below silently resolves to the cached real package and
+        # succeeds, so the failure path never runs. monkeypatch restores the entries.
+        for name in [n for n in sys.modules if n == "modules" or n.startswith("modules.")]:
+            monkeypatch.delitem(sys.modules, name)
+
         monkeypatch.setattr(validation.settings, "kometa_source_path", fake)
         status = validation.kometa_engine_status()
         assert status.kometa_available is False

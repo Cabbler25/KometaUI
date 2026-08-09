@@ -1,17 +1,25 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import { ConnectionsView } from './components/ConnectionsView'
+import { DefaultsBrowser } from './components/DefaultsBrowser'
 import { Editor } from './components/Editor'
 import { FileTree } from './components/FileTree'
+import { NewCollectionDialog } from './components/NewCollectionDialog'
 import { ValidationPanel } from './components/ValidationPanel'
 import { WorkspaceOpener } from './components/WorkspaceOpener'
 import {
   ApiError,
   api,
+  type Catalog,
   type ConfigCandidate,
   type FileNode,
+  type FileReference,
+  type PlexLibrary,
   type Status,
   type ValidationResult,
 } from './lib/api'
+
+type View = 'files' | 'defaults' | 'connections'
 
 interface OpenFile {
   path: string
@@ -26,11 +34,17 @@ export default function App() {
   const [configs, setConfigs] = useState<ConfigCandidate[]>([])
   const [activeConfig, setActiveConfig] = useState<string | null>(null)
   const [referenced, setReferenced] = useState<Set<string>>(new Set())
+  const [references, setReferences] = useState<FileReference[]>([])
   const [file, setFile] = useState<OpenFile | null>(null)
   const [workspaceResults, setWorkspaceResults] = useState<ValidationResult[] | null>(null)
   const [revealLine, setRevealLine] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
   const [toast, setToast] = useState<{ text: string; tone: 'ok' | 'bad' } | null>(null)
+  const [view, setView] = useState<View>('files')
+  const [catalog, setCatalog] = useState<Catalog | null>(null)
+  const [creating, setCreating] = useState(false)
+  // Populated once Plex is reachable; lets the builder filter to the library's real type.
+  const [plexLibraries, setPlexLibraries] = useState<PlexLibrary[]>([])
 
   const notify = useCallback((text: string, tone: 'ok' | 'bad' = 'ok') => {
     setToast({ text, tone })
@@ -43,6 +57,7 @@ export default function App() {
 
   useEffect(() => {
     refreshStatus().catch(() => undefined)
+    api.catalog().then(setCatalog).catch(() => undefined)
   }, [refreshStatus])
 
   const loadWorkspace = useCallback(async () => {
@@ -56,23 +71,21 @@ export default function App() {
 
   // Resolve which files the selected config actually pulls in, so the tree can mark the
   // rest as unused — files sitting in the directory that Kometa never reads.
-  useEffect(() => {
+  const loadReferences = useCallback(async () => {
     if (!activeConfig) return
-    let cancelled = false
-    api
-      .references(activeConfig)
-      .then(({ references }) => {
-        if (cancelled) return
-        const names = references
-          .filter((r) => r.exists)
-          .map((r) => r.value.replace(/\\/g, '/').split('/').slice(-2).join('/'))
-        setReferenced(new Set(names))
-      })
-      .catch(() => setReferenced(new Set()))
-    return () => {
-      cancelled = true
+    try {
+      const { references: refs } = await api.references(activeConfig)
+      setReferences(refs)
+      setReferenced(new Set(refs.filter((r) => r.relative).map((r) => r.relative!)))
+    } catch {
+      setReferences([])
+      setReferenced(new Set())
     }
   }, [activeConfig])
+
+  useEffect(() => {
+    loadReferences()
+  }, [loadReferences])
 
   const openFile = useCallback(
     async (path: string) => {
@@ -167,6 +180,34 @@ export default function App() {
     if (status?.workspace && !tree) loadWorkspace().catch(() => undefined)
   }, [status, tree, loadWorkspace])
 
+  const libraries = useMemo(
+    () => configs.find((c) => c.path === activeConfig)?.libraries ?? [],
+    [configs, activeConfig],
+  )
+
+  // Collection files this config already reads — a new collection has to land somewhere
+  // Kometa will actually load.
+  const collectionTargets = useMemo(() => {
+    const referencedCollections = references
+      .filter((r) => r.listKey === 'collection_files' && r.relative)
+      .map((r) => r.relative!)
+    return [...new Set(referencedCollections)]
+  }, [references])
+
+  // Which library type each collection file serves, so the builder can hide builders that
+  // cannot apply to it. Needs Plex: the config alone rarely states `library_type`.
+  const libraryTypeByFile = useMemo(() => {
+    const typeByLibrary = new Map(plexLibraries.map((l) => [l.name, l.libraryType]))
+    const out: Record<string, string> = {}
+    for (const ref of references) {
+      if (ref.listKey !== 'collection_files' || !ref.relative || !ref.library) continue
+      const type = typeByLibrary.get(ref.library)
+      // A file shared between a movie and a show library must not be narrowed to either.
+      if (type) out[ref.relative] = ref.relative in out && out[ref.relative] !== type ? 'any' : type
+    }
+    return out
+  }, [references, plexLibraries])
+
   if (!status) return <Centered>Connecting to the backend…</Centered>
   if (!status.workspace) return <WorkspaceOpener onOpened={loadWorkspace} />
 
@@ -177,11 +218,43 @@ export default function App() {
         configs={configs}
         activeConfig={activeConfig}
         dirty={dirty}
+        view={view}
+        canCreate={Boolean(catalog) && collectionTargets.length > 0}
+        onSelectView={setView}
         onSelectConfig={setActiveConfig}
         onToggleWrites={toggleWrites}
         onSave={save}
+        onNewCollection={() => setCreating(true)}
       />
 
+      {view === 'connections' ? (
+        <ConnectionsView
+          config={activeConfig}
+          canWrite={status.workspace.allowWrites}
+          onLibrariesDiscovered={setPlexLibraries}
+          onConfigChanged={() => {
+            loadWorkspace()
+            loadReferences()
+            if (file?.path === activeConfig) openFile(activeConfig)
+          }}
+          notify={notify}
+        />
+      ) : view === 'defaults' ? (
+        catalog && activeConfig ? (
+          <DefaultsBrowser
+            catalog={catalog}
+            config={activeConfig}
+            libraries={libraries}
+            onChanged={() => {
+              loadReferences()
+              if (file?.path === activeConfig) openFile(activeConfig)
+            }}
+            notify={notify}
+          />
+        ) : (
+          <Centered>Loading the Kometa catalog…</Centered>
+        )
+      ) : (
       <div className="flex min-h-0 flex-1">
         <aside className="w-64 shrink-0 overflow-auto border-r border-ink-800 bg-ink-900">
           {tree ? (
@@ -229,6 +302,22 @@ export default function App() {
           </div>
         </main>
       </div>
+      )}
+
+      {creating && catalog && (
+        <NewCollectionDialog
+          catalog={catalog}
+          targets={collectionTargets}
+          libraryTypeByFile={libraryTypeByFile}
+          onClose={() => setCreating(false)}
+          onCreated={(path) => {
+            setView('files')
+            openFile(path)
+            loadReferences()
+          }}
+          notify={notify}
+        />
+      )}
 
       {toast && (
         <div
@@ -250,17 +339,25 @@ function Header({
   configs,
   activeConfig,
   dirty,
+  view,
+  canCreate,
+  onSelectView,
   onSelectConfig,
   onToggleWrites,
   onSave,
+  onNewCollection,
 }: {
   status: Status
   configs: ConfigCandidate[]
   activeConfig: string | null
   dirty: boolean
+  view: View
+  canCreate: boolean
+  onSelectView: (view: View) => void
   onSelectConfig: (path: string) => void
   onToggleWrites: () => void
   onSave: () => void
+  onNewCollection: () => void
 }) {
   const workspace = status.workspace!
   const engine = status.validationEngine
@@ -268,7 +365,37 @@ function Header({
   return (
     <header className="flex shrink-0 items-center gap-3 border-b border-ink-800 bg-ink-900 px-3 py-2">
       <span className="font-semibold text-ink-100">KometaUI</span>
-      <span className="truncate font-mono text-ink-500" title={workspace.path}>
+
+      <nav className="flex shrink-0 overflow-hidden rounded border border-ink-700">
+        {(['files', 'defaults', 'connections'] as const).map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            onClick={() => onSelectView(tab)}
+            className={`whitespace-nowrap px-2.5 py-0.5 capitalize ${
+              view === tab ? 'bg-accent-dim/40 text-ink-100' : 'text-ink-400 hover:bg-ink-800'
+            }`}
+          >
+            {tab}
+          </button>
+        ))}
+      </nav>
+
+      <button
+        type="button"
+        onClick={onNewCollection}
+        disabled={!canCreate || !workspace.allowWrites}
+        className="shrink-0 whitespace-nowrap rounded border border-ink-700 px-2 py-0.5 text-ink-200 hover:bg-ink-800 disabled:opacity-30"
+        title={
+          !workspace.allowWrites
+            ? 'Unlock writes to create collections'
+            : 'Build a collection from Kometa’s builders'
+        }
+      >
+        + Collection
+      </button>
+
+      <span className="min-w-0 flex-1 truncate font-mono text-ink-500" title={workspace.path}>
         {workspace.path}
       </span>
 
@@ -289,7 +416,7 @@ function Header({
         </select>
       )}
 
-      <div className="ml-auto flex items-center gap-2">
+      <div className="ml-auto flex shrink-0 items-center gap-2">
         <Chip
           tone={engine.kometa_available ? 'ok' : 'muted'}
           title={engine.detail ?? `Using Kometa ${engine.kometa_version}'s own validator`}

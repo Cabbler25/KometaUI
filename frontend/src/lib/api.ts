@@ -42,6 +42,8 @@ export interface FileReference {
   library: string | null
   listKey: string
   resolved: string | null
+  /** Workspace-relative path, present only when the file is inside the workspace. */
+  relative: string | null
   exists: boolean | null
   templateVariables: Record<string, unknown> | null
 }
@@ -60,6 +62,91 @@ export interface Status {
     kometa_version: string | null
     detail: string | null
   }
+}
+
+export type Control =
+  | 'text'
+  | 'textarea'
+  | 'number'
+  | 'integer'
+  | 'boolean'
+  | 'select'
+  | 'multiselect'
+  | 'list'
+  | 'object'
+  | 'yaml'
+
+export interface FormField {
+  name: string
+  label: string
+  control: Control
+  description: string
+  required: boolean
+  default: unknown
+  options: unknown[]
+  minimum: number | null
+  maximum: number | null
+  fields: FormField[]
+  item_control: Control | null
+  placeholder: string
+}
+
+export interface EnabledDefault {
+  name: string
+  kind: 'collection' | 'overlay' | 'playlist'
+  library: string | null
+  listKey: string
+  index: number
+  legacyKey: boolean
+  templateVariables: Record<string, unknown>
+}
+
+export interface DefaultsGroup {
+  names: string[]
+  files: Record<string, string>
+  declared_but_missing: string[]
+  template_variable_refs: Record<string, string>
+  shared_template_variable_ref: string | null
+}
+
+export interface Catalog {
+  kometa_version: string
+  services: Record<string, { label: string; builders: string[] }>
+  builder_groups: Record<string, string[]>
+  detail_groups: Record<string, string[]>
+  defaults: Record<'collections' | 'overlays' | 'playlists', DefaultsGroup>
+  collection_property_descriptions: Record<string, string>
+  builders_missing_from_schema: string[]
+}
+
+export interface EditResult {
+  path: string
+  changed: boolean
+  text: string
+  backup?: string | null
+  validation?: ValidationResult
+}
+
+export interface PlexPin {
+  id: number
+  code: string
+  authUrl: string
+}
+
+export interface PlexServer {
+  name: string
+  product: string
+  version: string
+  owned: boolean
+  connections: { uri: string; local: boolean; relay: boolean }[]
+}
+
+export interface PlexLibrary {
+  name: string
+  plexType: string
+  /** The value Kometa expects for `library_type`. */
+  libraryType: string
+  key: string
 }
 
 export class ApiError extends Error {
@@ -142,4 +229,108 @@ export const api = {
     }>('/api/validate/all', { method: 'POST' }),
 
   schemaUrl: (name: string) => `/api/schemas/${name}`,
+
+  catalog: () => request<Catalog>('/api/catalog'),
+
+  // -- forms ---------------------------------------------------------------------
+
+  formModel: (schema: string, definition: string) =>
+    request<{ fields: FormField[] }>(`/api/forms/${schema}/${definition}`),
+
+  defaultForm: (kind: string, name: string) =>
+    request<{ name: string; definition: string; file: string | null; fields: FormField[] }>(
+      `/api/forms/defaults/${kind}/${encodeURIComponent(name)}`,
+    ),
+
+  builderForm: (builder: string) =>
+    request<{ builder: string; service: string | null; inSchema: boolean; field: FormField }>(
+      `/api/forms/builder/${encodeURIComponent(builder)}`,
+    ),
+
+  // -- structured edits ------------------------------------------------------------
+
+  enabledDefaults: (config: string, library?: string) =>
+    request<{ enabled: EnabledDefault[] }>(
+      `/api/defaults/enabled?config=${encodeURIComponent(config)}` +
+        (library ? `&library=${encodeURIComponent(library)}` : ''),
+    ),
+
+  addDefault: (
+    config: string,
+    library: string,
+    kind: string,
+    name: string,
+    templateVariables: Record<string, unknown> = {},
+  ) =>
+    request<EditResult>('/api/defaults/add', {
+      method: 'POST',
+      body: JSON.stringify({ config, library, kind, name, template_variables: templateVariables }),
+    }),
+
+  removeDefault: (config: string, library: string, listKey: string, index: number) =>
+    request<EditResult>('/api/defaults/remove', {
+      method: 'POST',
+      body: JSON.stringify({ config, library, list_key: listKey, index }),
+    }),
+
+  setTemplateVariables: (
+    config: string,
+    library: string,
+    listKey: string,
+    index: number,
+    templateVariables: Record<string, unknown>,
+  ) =>
+    request<EditResult>('/api/defaults/template-variables', {
+      method: 'POST',
+      body: JSON.stringify({
+        config,
+        library,
+        list_key: listKey,
+        index,
+        template_variables: templateVariables,
+      }),
+    }),
+
+  addCollection: (path: string, name: string, definition: Record<string, unknown>) =>
+    request<EditResult>('/api/collections/add', {
+      method: 'POST',
+      body: JSON.stringify({ path, name, definition }),
+    }),
+
+  setValue: (path: string, pointer: (string | number)[], value: unknown) =>
+    request<EditResult>('/api/documents/set', {
+      method: 'POST',
+      body: JSON.stringify({ path, pointer, value }),
+    }),
+
+  // -- connections (read-only) -------------------------------------------------------
+
+  plexPin: () => request<PlexPin>('/api/plex/pin', { method: 'POST' }),
+
+  plexPinStatus: (id: number) =>
+    request<{ linked: boolean; token: string | null }>(`/api/plex/pin/${id}`),
+
+  plexServers: (token: string) =>
+    request<{ servers: PlexServer[] }>('/api/plex/servers', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    }),
+
+  plexTest: (url: string, token: string) =>
+    request<{ name: string; version: string; platform: string }>('/api/plex/test', {
+      method: 'POST',
+      body: JSON.stringify({ url, token }),
+    }),
+
+  plexLibraries: (url: string, token: string) =>
+    request<{ libraries: PlexLibrary[] }>('/api/plex/libraries', {
+      method: 'POST',
+      body: JSON.stringify({ url, token }),
+    }),
+
+  tmdbTest: (apikey: string) =>
+    request<{ ok: boolean; imageBase: string | null }>('/api/tmdb/test', {
+      method: 'POST',
+      body: JSON.stringify({ apikey }),
+    }),
 }

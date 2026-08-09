@@ -62,6 +62,9 @@ class FileReference:
     list_key: str
     # Resolved absolute path for local references, when it exists on disk.
     resolved: str | None = None
+    # Workspace-relative form of `resolved`, when the file lives inside the workspace.
+    # This is the identifier the rest of the API uses, so the UI can open or edit it.
+    relative: str | None = None
     exists: bool | None = None
     template_variables: dict[str, Any] | None = None
 
@@ -248,10 +251,17 @@ class Workspace:
 
         for candidate in candidates:
             try:
-                if candidate.exists():
-                    ref.resolved = str(candidate.resolve())
-                    ref.exists = True
-                    return
+                if not candidate.exists():
+                    continue
+                resolved = candidate.resolve()
+                ref.resolved = str(resolved)
+                ref.exists = True
+                # A referenced file can legitimately sit outside the workspace (a shared
+                # library of collection files, say); it is then readable by Kometa but not
+                # editable here, so leave `relative` unset.
+                if resolved == self.root or self.root in resolved.parents:
+                    ref.relative = resolved.relative_to(self.root).as_posix()
+                return
             except OSError:
                 continue
         ref.exists = False

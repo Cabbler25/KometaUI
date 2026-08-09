@@ -12,13 +12,43 @@ Early development. See `docs/ARCHITECTURE.md` for the design.
 
 | Milestone | Contents | State |
 |---|---|---|
-| M0 | Repo scaffold, catalog generator, vendored schemas | in progress |
-| M1 | File tree, schema-aware YAML editor, validation | |
-| M2 | Schema-driven config forms | |
-| M3 | Plex read-only + setup wizard | |
-| M4 | Defaults browser | |
-| M5 | Collection/overlay authoring | |
+| M0 | Repo scaffold, catalog generator, vendored schemas | done |
+| M1 | File tree, schema-aware YAML editor, validation | done |
+| M2 | Surgical YAML editing, schema-derived forms | done |
+| M4 | Defaults browser, New Collection builder | done |
+| M3 | Plex read-only, connections, library discovery | done |
+| M5 | Overlay authoring, config forms surfaced in the UI | |
 | M6 | Collection preview, packaging | |
+
+## Creating things without writing YAML
+
+Two surfaces cover most of what people build:
+
+- **Defaults** — browse Kometa's 57 collection and 24 overlay defaults grouped by
+  category, enable them per library, and tune their options through forms generated from
+  each default's own schema definition.
+- **+ Collection** — pick from 137 builders grouped by service and filtered to the
+  library type, fill in a generated form, and watch the YAML preview update before it is
+  written.
+
+Neither has hand-written per-field code. The backend turns Kometa's JSON Schema into
+field descriptors and the frontend renders one component per control type, so the forms
+track Kometa releases instead of drifting from them.
+
+Edits are applied surgically — the affected lines are spliced, never the whole document —
+so comments, key order, and formatting survive. Every write makes a timestamped backup.
+
+## Connections
+
+The **Connections** tab signs in to Plex with a linking code rather than making you dig
+`X-Plex-Token` out of an item's XML, lists the servers your account can reach (offering
+direct addresses before relays), and reads your real library names and types. Library
+names must match `config.yml` exactly — a typo is a silent no-op in Kometa — so they are
+written for you, and their types let the collection builder hide builders that cannot
+apply.
+
+Plex access is **read-only**: KometaUI lists libraries and reports versions, and writes
+only to your own config files.
 
 ## Layout
 

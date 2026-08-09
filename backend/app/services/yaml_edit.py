@@ -62,17 +62,17 @@ def _render_path(path: Path) -> str:
     return ".".join(str(p) for p in path) or "(root)"
 
 
-def _child_position(parent: Any, step: str | int) -> tuple[int, int]:
+def _child_position(parent: Any, step: str | int, path: Path) -> tuple[int, int]:
     """Line and column where a child's *key* (or sequence item) begins."""
     if isinstance(parent, CommentedMap):
         if step not in parent:
-            raise EditError(f"Key not present: {step}")
+            raise EditError(f"No such path: {_render_path(path)}")
         return parent.lc.key(step)
     if isinstance(parent, CommentedSeq):
         if not isinstance(step, int) or not (0 <= step < len(parent)):
-            raise EditError(f"Index out of range: {step}")
+            raise EditError(f"No such path: {_render_path(path)}")
         return parent.lc.item(step)
-    raise EditError(f"Cannot index into {type(parent).__name__}")
+    raise EditError(f"Cannot index into {type(parent).__name__} at {_render_path(path)}")
 
 
 def _is_blank_or_comment(line: str) -> bool:
@@ -93,7 +93,7 @@ def node_span(text: str, path: Path, data: Any | None = None) -> Span:
 
     data = loads(text) if data is None else data
     parent = _descend(data, path[:-1])
-    line, col = _child_position(parent, path[-1])
+    line, col = _child_position(parent, path[-1], path)
 
     lines = text.splitlines()
     end = len(lines)
@@ -142,10 +142,22 @@ def render_fragment(value: Any, indent: int = 0, key: str | None = None) -> str:
     if body.endswith("...\n"):
         body = body[: -len("...\n")]
 
-    if indent:
-        pad = " " * indent
-        body = "".join(f"{pad}{line}" if line.strip() else line for line in body.splitlines(keepends=True))
-    return body
+    # Shift the block so its first line sits exactly at `indent`. Normalising against the
+    # emitter's own leading offset matters for sequences: with `offset=2` a top-level list
+    # already renders two columns in, and naively prepending padding would double-count it
+    # and produce a nested list instead of a sibling item.
+    lines = body.splitlines(keepends=True)
+    first = next((line for line in lines if line.strip()), "")
+    delta = indent - (len(first) - len(first.lstrip(" ")))
+
+    if delta > 0:
+        pad = " " * delta
+        lines = [f"{pad}{line}" if line.strip() else line for line in lines]
+    elif delta < 0:
+        strip = -delta
+        lines = [line[strip:] if line[:strip].isspace() else line.lstrip(" ") for line in lines]
+
+    return "".join(lines)
 
 
 # ----------------------------------------------------------------------------------
@@ -263,7 +275,7 @@ def append_sequence_item(text: str, path: Path, value: Any) -> str:
     dash_indent = max(item_col - 2, 0)
     fragment = render_fragment([value], indent=dash_indent)
 
-    return "".join(lines[: last_span.end]) + fragment + "".join(lines[last_span.end :])
+    return _splice(lines, last_span.end, fragment)
 
 
 def _populate_empty_container(
@@ -296,6 +308,16 @@ def _populate_empty_container(
 def delete_node(text: str, path: Path) -> str:
     """Remove the node at ``path`` along with the comment block introducing it."""
     data = loads(text)
+
+    # Deleting a container's last child would leave a bare `key:` behind, which YAML reads
+    # as null rather than as an empty mapping -- a different thing, and one Kometa may
+    # reject. Collapse to an explicit `{}` / `[]` instead.
+    if len(path) > 1:
+        parent = _descend(data, path[:-1])
+        if isinstance(parent, (CommentedMap, CommentedSeq)) and len(parent) == 1:
+            empty: Any = [] if isinstance(parent, CommentedSeq) else {}
+            return replace_node(text, list(path[:-1]), empty)
+
     span = node_span(text, path, data)
     lines = text.splitlines(keepends=True)
 
@@ -327,5 +349,15 @@ def replace_node(text: str, path: Path, value: Any) -> str:
     return "".join(lines[: span.start]) + fragment + "".join(lines[span.end :])
 
 
-def _ensure_trailing_newline(text: str) -> str:
-    return text if not text or text.endswith("\n") else text + "\n"
+def _splice(lines: list[str], at: int, fragment: str) -> str:
+    """Insert ``fragment`` between lines, repairing a missing final newline.
+
+    A file whose last line has no newline would otherwise have the inserted block run on
+    from it, corrupting both.
+    """
+    before = "".join(lines[:at])
+    if before and not before.endswith("\n"):
+        before += "\n"
+    if fragment and not fragment.endswith("\n"):
+        fragment += "\n"
+    return before + fragment + "".join(lines[at:])

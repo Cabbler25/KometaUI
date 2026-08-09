@@ -2989,6 +2989,1048 @@
       ]
     }
   },
+  "filters": {
+    "attributes": {
+      "actor": {
+        "category": "tag",
+        "modifiers": [
+          "",
+          ".not",
+          ".regex",
+          ".count_gt",
+          ".count_gte",
+          ".count_lt",
+          ".count_lte"
+        ]
+      },
+      "added": {
+        "category": "date",
+        "modifiers": [
+          "",
+          ".not",
+          ".before",
+          ".after",
+          ".regex"
+        ]
+      },
+      "albums": {
+        "category": "special",
+        "modifiers": [
+          ""
+        ]
+      },
+      "aspect": {
+        "category": "number",
+        "modifiers": [
+          "",
+          ".not",
+          ".gt",
+          ".gte",
+          ".lt",
+          ".lte"
+        ]
+      },
+      "audience_rating": {
+        "category": "number",
+        "modifiers": [
+          "",
+          ".not",
+          ".gt",
+          ".gte",
+          ".lt",
+          ".lte"
+        ]
+      },
+      "audio_codec": {
+        "category": "string",
+        "modifiers": [
+          "",
+          ".not",
+          ".is",
+          ".isnot",
+          ".begins",
+          ".ends",
+          ".regex"
+        ]
+      },
+      "audio_language": {
+        "category": "tag",
+        "modifiers": [
+          "",
+          ".not",
+          ".regex",
+          ".count_gt",
+          ".count_gte",
+          ".count_lt",
+          ".count_lte"
+        ]
+      },
+      "audio_profile": {
+        "category": "string",
+        "modifiers": [
+          "",
+          ".not",
+          ".is",
+          ".isnot",
+          ".begins",
+          ".ends",
+          ".regex"
+        ]
+      },
+      "audio_track_title": {
+        "category": "string",
+        "modifiers": [
+          "",
+          ".not",
+          ".is",
+          ".isnot",
+          ".begins",
+          ".ends",
+          ".regex"
+        ]
+      },
+      "channels": {
+        "category": "number",
+        "modifiers": [
+          "",
+          ".not",
+          ".gt",
+          ".gte",
+          ".lt",
+          ".lte"
+        ]
+      },
+      "collection": {
+        "category": "tag",
+        "modifiers": [
+          "",
+          ".not",
+          ".regex",
+          ".count_gt",
+          ".count_gte",
+          ".count_lt",
+          ".count_lte"
+        ]
+      },
+      "content_rating": {
+        "category": "tag",
+        "modifiers": [
+          "",
+          ".not",
+          ".regex",
+          ".count_gt",
+          ".count_gte",
+          ".count_lt",
+          ".count_lte"
+        ]
+      },
+      "country": {
+        "category": "tag",
+        "modifiers": [
+          "",
+          ".not",
+          ".regex",
+          ".count_gt",
+          ".count_gte",
+          ".count_lt",
+          ".count_lte"
+        ]
+      },
+      "critic_rating": {
+        "category": "number",
+        "modifiers": [
+          "",
+          ".not",
+          ".gt",
+          ".gte",
+          ".lt",
+          ".lte"
+        ]
+      },
+      "director": {
+        "category": "tag",
+        "modifiers": [
+          "",
+          ".not",
+          ".regex",
+          ".count_gt",
+          ".count_gte",
+          ".count_lt",
+          ".count_lte"
+        ]
+      },
+      "duration": {
+        "category": "number",
+        "modifiers": [
+          "",
+          ".not",
+          ".gt",
+          ".gte",
+          ".lt",
+          ".lte"
+        ]
+      },
+      "edition": {
+        "category": "string",
+        "modifiers": [
+          "",
+          ".not",
+          ".is",
+          ".isnot",
+          ".begins",
+          ".ends",
+          ".regex"
+        ]
+      },
+      "episodes": {
+        "category": "special",
+        "modifiers": [
+          ""
+        ]
+      },
+      "filepath": {
+        "category": "string",
+        "modifiers": [
+          "",
+          ".not",
+          ".is",
+          ".isnot",
+          ".begins",
+          ".ends",
+          ".regex"
+        ]
+      },
+      "first_episode_aired": {
+        "category": "date",
+        "modifiers": [
+          "",
+          ".not",
+          ".before",
+          ".after",
+          ".regex"
+        ]
+      },
+      "folder": {
+        "category": "string",
+        "modifiers": [
+          "",
+          ".not",
+          ".is",
+          ".isnot",
+          ".begins",
+          ".ends",
+          ".regex"
+        ]
+      },
+      "genre": {
+        "category": "tag",
+        "modifiers": [
+          "",
+          ".not",
+          ".regex",
+          ".count_gt",
+          ".count_gte",
+          ".count_lt",
+          ".count_lte"
+        ]
+      },
+      "has_collection": {
+        "category": "boolean",
+        "modifiers": [
+          ""
+        ]
+      },
+      "has_dolby_vision": {
+        "category": "boolean",
+        "modifiers": [
+          ""
+        ]
+      },
+      "has_edition": {
+        "category": "boolean",
+        "modifiers": [
+          ""
+        ]
+      },
+      "has_overlay": {
+        "category": "boolean",
+        "modifiers": [
+          ""
+        ]
+      },
+      "has_stinger": {
+        "category": "boolean",
+        "modifiers": [
+          ""
+        ]
+      },
+      "height": {
+        "category": "number",
+        "modifiers": [
+          "",
+          ".not",
+          ".gt",
+          ".gte",
+          ".lt",
+          ".lte"
+        ]
+      },
+      "history": {
+        "category": "special",
+        "modifiers": [
+          ""
+        ]
+      },
+      "imdb_keyword": {
+        "category": "tag",
+        "modifiers": [
+          "",
+          ".not",
+          ".regex",
+          ".count_gt",
+          ".count_gte",
+          ".count_lt",
+          ".count_lte"
+        ]
+      },
+      "label": {
+        "category": "tag",
+        "modifiers": [
+          "",
+          ".not",
+          ".regex",
+          ".count_gt",
+          ".count_gte",
+          ".count_lt",
+          ".count_lte"
+        ]
+      },
+      "last_episode_aired": {
+        "category": "date",
+        "modifiers": [
+          "",
+          ".not",
+          ".before",
+          ".after",
+          ".regex"
+        ]
+      },
+      "last_episode_aired_or_never": {
+        "category": "date",
+        "modifiers": [
+          "",
+          ".not",
+          ".before",
+          ".after",
+          ".regex"
+        ]
+      },
+      "last_played": {
+        "category": "date",
+        "modifiers": [
+          "",
+          ".not",
+          ".before",
+          ".after",
+          ".regex"
+        ]
+      },
+      "network": {
+        "category": "tag",
+        "modifiers": [
+          "",
+          ".not",
+          ".regex",
+          ".count_gt",
+          ".count_gte",
+          ".count_lt",
+          ".count_lte"
+        ]
+      },
+      "origin_country": {
+        "category": "tag",
+        "modifiers": [
+          "",
+          ".not",
+          ".regex",
+          ".count_gt",
+          ".count_gte",
+          ".count_lt",
+          ".count_lte"
+        ]
+      },
+      "original_language": {
+        "category": "special",
+        "modifiers": [
+          ""
+        ]
+      },
+      "original_language.not": {
+        "category": "special",
+        "modifiers": [
+          ""
+        ]
+      },
+      "plays": {
+        "category": "number",
+        "modifiers": [
+          "",
+          ".not",
+          ".gt",
+          ".gte",
+          ".lt",
+          ".lte"
+        ]
+      },
+      "producer": {
+        "category": "tag",
+        "modifiers": [
+          "",
+          ".not",
+          ".regex",
+          ".count_gt",
+          ".count_gte",
+          ".count_lt",
+          ".count_lte"
+        ]
+      },
+      "record_label": {
+        "category": "string",
+        "modifiers": [
+          "",
+          ".not",
+          ".is",
+          ".isnot",
+          ".begins",
+          ".ends",
+          ".regex"
+        ]
+      },
+      "release": {
+        "category": "date",
+        "modifiers": [
+          "",
+          ".not",
+          ".before",
+          ".after",
+          ".regex"
+        ]
+      },
+      "resolution": {
+        "category": "tag",
+        "modifiers": [
+          "",
+          ".not",
+          ".regex",
+          ".count_gt",
+          ".count_gte",
+          ".count_lt",
+          ".count_lte"
+        ]
+      },
+      "season_title": {
+        "category": "string",
+        "modifiers": [
+          "",
+          ".not",
+          ".is",
+          ".isnot",
+          ".begins",
+          ".ends",
+          ".regex"
+        ]
+      },
+      "seasons": {
+        "category": "special",
+        "modifiers": [
+          ""
+        ]
+      },
+      "show_title": {
+        "category": "string",
+        "modifiers": [
+          "",
+          ".not",
+          ".is",
+          ".isnot",
+          ".begins",
+          ".ends",
+          ".regex"
+        ]
+      },
+      "stinger_rating": {
+        "category": "number",
+        "modifiers": [
+          "",
+          ".not",
+          ".gt",
+          ".gte",
+          ".lt",
+          ".lte"
+        ]
+      },
+      "studio": {
+        "category": "string",
+        "modifiers": [
+          "",
+          ".not",
+          ".is",
+          ".isnot",
+          ".begins",
+          ".ends",
+          ".regex"
+        ]
+      },
+      "subtitle_language": {
+        "category": "tag",
+        "modifiers": [
+          "",
+          ".not",
+          ".regex",
+          ".count_gt",
+          ".count_gte",
+          ".count_lt",
+          ".count_lte"
+        ]
+      },
+      "subtitle_track_title": {
+        "category": "string",
+        "modifiers": [
+          "",
+          ".not",
+          ".is",
+          ".isnot",
+          ".begins",
+          ".ends",
+          ".regex"
+        ]
+      },
+      "summary": {
+        "category": "string",
+        "modifiers": [
+          "",
+          ".not",
+          ".is",
+          ".isnot",
+          ".begins",
+          ".ends",
+          ".regex"
+        ]
+      },
+      "title": {
+        "category": "string",
+        "modifiers": [
+          "",
+          ".not",
+          ".is",
+          ".isnot",
+          ".begins",
+          ".ends",
+          ".regex"
+        ]
+      },
+      "tmdb_genre": {
+        "category": "tag",
+        "modifiers": [
+          "",
+          ".not",
+          ".regex",
+          ".count_gt",
+          ".count_gte",
+          ".count_lt",
+          ".count_lte"
+        ]
+      },
+      "tmdb_keyword": {
+        "category": "tag",
+        "modifiers": [
+          "",
+          ".not",
+          ".regex",
+          ".count_gt",
+          ".count_gte",
+          ".count_lt",
+          ".count_lte"
+        ]
+      },
+      "tmdb_status": {
+        "category": "special",
+        "modifiers": [
+          ""
+        ]
+      },
+      "tmdb_status.not": {
+        "category": "special",
+        "modifiers": [
+          ""
+        ]
+      },
+      "tmdb_title": {
+        "category": "string",
+        "modifiers": [
+          "",
+          ".not",
+          ".is",
+          ".isnot",
+          ".begins",
+          ".ends",
+          ".regex"
+        ]
+      },
+      "tmdb_type": {
+        "category": "special",
+        "modifiers": [
+          ""
+        ]
+      },
+      "tmdb_type.not": {
+        "category": "special",
+        "modifiers": [
+          ""
+        ]
+      },
+      "tmdb_vote_average": {
+        "category": "number",
+        "modifiers": [
+          "",
+          ".not",
+          ".gt",
+          ".gte",
+          ".lt",
+          ".lte"
+        ]
+      },
+      "tmdb_vote_count": {
+        "category": "number",
+        "modifiers": [
+          "",
+          ".not",
+          ".gt",
+          ".gte",
+          ".lt",
+          ".lte"
+        ]
+      },
+      "tmdb_year": {
+        "category": "number",
+        "modifiers": [
+          "",
+          ".not",
+          ".gt",
+          ".gte",
+          ".lt",
+          ".lte"
+        ]
+      },
+      "tracks": {
+        "category": "special",
+        "modifiers": [
+          ""
+        ]
+      },
+      "tvdb_genre": {
+        "category": "tag",
+        "modifiers": [
+          "",
+          ".not",
+          ".regex",
+          ".count_gt",
+          ".count_gte",
+          ".count_lt",
+          ".count_lte"
+        ]
+      },
+      "tvdb_status": {
+        "category": "string",
+        "modifiers": [
+          "",
+          ".not",
+          ".is",
+          ".isnot",
+          ".begins",
+          ".ends",
+          ".regex"
+        ]
+      },
+      "tvdb_title": {
+        "category": "string",
+        "modifiers": [
+          "",
+          ".not",
+          ".is",
+          ".isnot",
+          ".begins",
+          ".ends",
+          ".regex"
+        ]
+      },
+      "user_rating": {
+        "category": "number",
+        "modifiers": [
+          "",
+          ".not",
+          ".gt",
+          ".gte",
+          ".lt",
+          ".lte"
+        ]
+      },
+      "versions": {
+        "category": "number",
+        "modifiers": [
+          "",
+          ".not",
+          ".gt",
+          ".gte",
+          ".lt",
+          ".lte"
+        ]
+      },
+      "video_codec": {
+        "category": "string",
+        "modifiers": [
+          "",
+          ".not",
+          ".is",
+          ".isnot",
+          ".begins",
+          ".ends",
+          ".regex"
+        ]
+      },
+      "video_profile": {
+        "category": "string",
+        "modifiers": [
+          "",
+          ".not",
+          ".is",
+          ".isnot",
+          ".begins",
+          ".ends",
+          ".regex"
+        ]
+      },
+      "width": {
+        "category": "number",
+        "modifiers": [
+          "",
+          ".not",
+          ".gt",
+          ".gte",
+          ".lt",
+          ".lte"
+        ]
+      },
+      "writer": {
+        "category": "tag",
+        "modifiers": [
+          "",
+          ".not",
+          ".regex",
+          ".count_gt",
+          ".count_gte",
+          ".count_lt",
+          ".count_lte"
+        ]
+      },
+      "year": {
+        "category": "number",
+        "modifiers": [
+          "",
+          ".not",
+          ".gt",
+          ".gte",
+          ".lt",
+          ".lte"
+        ]
+      }
+    },
+    "by_library_type": {
+      "movie": [
+        "title",
+        "summary",
+        "collection",
+        "has_collection",
+        "added",
+        "last_played",
+        "user_rating",
+        "plays",
+        "filepath",
+        "label",
+        "audio_track_title",
+        "subtitle_track_title",
+        "versions",
+        "year",
+        "has_overlay",
+        "resolution",
+        "audio_language",
+        "subtitle_language",
+        "has_dolby_vision",
+        "channels",
+        "height",
+        "width",
+        "aspect",
+        "audio_codec",
+        "audio_profile",
+        "video_codec",
+        "video_profile",
+        "release",
+        "critic_rating",
+        "history",
+        "duration",
+        "genre",
+        "actor",
+        "content_rating",
+        "audience_rating",
+        "studio",
+        "original_language",
+        "tmdb_vote_count",
+        "tmdb_vote_average",
+        "tmdb_year",
+        "tmdb_genre",
+        "tmdb_title",
+        "tmdb_keyword",
+        "imdb_keyword",
+        "edition",
+        "has_edition",
+        "director",
+        "producer",
+        "writer",
+        "country",
+        "stinger_rating",
+        "has_stinger"
+      ],
+      "show": [
+        "title",
+        "summary",
+        "collection",
+        "has_collection",
+        "added",
+        "last_played",
+        "user_rating",
+        "plays",
+        "filepath",
+        "label",
+        "audio_track_title",
+        "subtitle_track_title",
+        "versions",
+        "year",
+        "has_overlay",
+        "resolution",
+        "audio_language",
+        "subtitle_language",
+        "has_dolby_vision",
+        "channels",
+        "height",
+        "width",
+        "aspect",
+        "audio_codec",
+        "audio_profile",
+        "video_codec",
+        "video_profile",
+        "release",
+        "critic_rating",
+        "history",
+        "duration",
+        "genre",
+        "actor",
+        "content_rating",
+        "audience_rating",
+        "studio",
+        "original_language",
+        "tmdb_vote_count",
+        "tmdb_vote_average",
+        "tmdb_year",
+        "tmdb_genre",
+        "tmdb_title",
+        "tmdb_keyword",
+        "imdb_keyword",
+        "edition",
+        "has_edition",
+        "folder",
+        "episodes",
+        "seasons",
+        "tmdb_status",
+        "tmdb_type",
+        "origin_country",
+        "network",
+        "first_episode_aired",
+        "last_episode_aired",
+        "last_episode_aired_or_never",
+        "tvdb_title",
+        "tvdb_status",
+        "tvdb_genre"
+      ],
+      "season": [
+        "title",
+        "summary",
+        "collection",
+        "has_collection",
+        "added",
+        "last_played",
+        "user_rating",
+        "plays",
+        "filepath",
+        "label",
+        "audio_track_title",
+        "subtitle_track_title",
+        "versions",
+        "year",
+        "has_overlay",
+        "resolution",
+        "audio_language",
+        "subtitle_language",
+        "has_dolby_vision",
+        "channels",
+        "height",
+        "width",
+        "aspect",
+        "audio_codec",
+        "audio_profile",
+        "video_codec",
+        "video_profile",
+        "episodes",
+        "show_title"
+      ],
+      "episode": [
+        "title",
+        "summary",
+        "collection",
+        "has_collection",
+        "added",
+        "last_played",
+        "user_rating",
+        "plays",
+        "filepath",
+        "label",
+        "audio_track_title",
+        "subtitle_track_title",
+        "versions",
+        "year",
+        "has_overlay",
+        "resolution",
+        "audio_language",
+        "subtitle_language",
+        "has_dolby_vision",
+        "channels",
+        "height",
+        "width",
+        "aspect",
+        "audio_codec",
+        "audio_profile",
+        "video_codec",
+        "video_profile",
+        "release",
+        "critic_rating",
+        "history",
+        "duration",
+        "actor",
+        "content_rating",
+        "audience_rating",
+        "director",
+        "producer",
+        "writer",
+        "show_title",
+        "season_title"
+      ],
+      "artist": [
+        "title",
+        "summary",
+        "collection",
+        "has_collection",
+        "added",
+        "last_played",
+        "user_rating",
+        "plays",
+        "filepath",
+        "label",
+        "audio_track_title",
+        "subtitle_track_title",
+        "versions",
+        "has_overlay",
+        "genre",
+        "country",
+        "folder",
+        "tracks",
+        "albums"
+      ],
+      "album": [
+        "title",
+        "summary",
+        "collection",
+        "has_collection",
+        "added",
+        "last_played",
+        "user_rating",
+        "plays",
+        "filepath",
+        "label",
+        "audio_track_title",
+        "subtitle_track_title",
+        "versions",
+        "year",
+        "has_overlay",
+        "release",
+        "critic_rating",
+        "history",
+        "genre",
+        "tracks",
+        "record_label"
+      ],
+      "track": [
+        "title",
+        "summary",
+        "collection",
+        "has_collection",
+        "added",
+        "last_played",
+        "user_rating",
+        "plays",
+        "filepath",
+        "label",
+        "audio_track_title",
+        "subtitle_track_title",
+        "versions",
+        "year",
+        "duration"
+      ]
+    },
+    "modifiers_by_category": {
+      "string": [
+        "",
+        ".not",
+        ".is",
+        ".isnot",
+        ".begins",
+        ".ends",
+        ".regex"
+      ],
+      "tag": [
+        "",
+        ".not",
+        ".regex",
+        ".count_gt",
+        ".count_gte",
+        ".count_lt",
+        ".count_lte"
+      ],
+      "date": [
+        "",
+        ".not",
+        ".before",
+        ".after",
+        ".regex"
+      ],
+      "number": [
+        "",
+        ".not",
+        ".gt",
+        ".gte",
+        ".lt",
+        ".lte"
+      ]
+    }
+  },
   "builders_missing_from_schema": [
     "mal_genre",
     "mal_studio",

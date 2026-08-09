@@ -4,7 +4,13 @@ import { ConnectionsView } from './components/ConnectionsView'
 import { DefaultsBrowser } from './components/DefaultsBrowser'
 import { Editor } from './components/Editor'
 import { FileTree } from './components/FileTree'
-import { NewDefinitionDialog, type DefinitionKind } from './components/NewDefinitionDialog'
+import { DefinitionsPanel } from './components/DefinitionsPanel'
+import { MaintenanceView } from './components/MaintenanceView'
+import {
+  NewDefinitionDialog,
+  type DefinitionKind,
+  type EditTarget,
+} from './components/NewDefinitionDialog'
 import { SettingsView } from './components/SettingsView'
 import { ValidationPanel } from './components/ValidationPanel'
 import { WorkspaceOpener } from './components/WorkspaceOpener'
@@ -20,7 +26,7 @@ import {
   type ValidationResult,
 } from './lib/api'
 
-type View = 'files' | 'defaults' | 'settings' | 'connections'
+type View = 'files' | 'defaults' | 'settings' | 'connections' | 'maintenance'
 
 interface OpenFile {
   path: string
@@ -44,6 +50,7 @@ export default function App() {
   const [view, setView] = useState<View>('files')
   const [catalog, setCatalog] = useState<Catalog | null>(null)
   const [creating, setCreating] = useState<DefinitionKind | null>(null)
+  const [editing, setEditing] = useState<{ kind: DefinitionKind; target: EditTarget } | null>(null)
   // Held on the backend so it survives a reload; mirrored here for rendering. Its
   // libraries let the builder filter to each file's real library type.
   const [connection, setConnection] = useState<ConnectionState | null>(null)
@@ -256,7 +263,18 @@ export default function App() {
         onNew={setCreating}
       />
 
-      {view === 'settings' ? (
+      {view === 'maintenance' ? (
+        <MaintenanceView
+          config={activeConfig}
+          activeFile={file?.path ?? null}
+          canWrite={status.workspace.allowWrites}
+          onChanged={() => {
+            loadReferences()
+            if (file) openFile(file.path)
+          }}
+          notify={notify}
+        />
+      ) : view === 'settings' ? (
         <SettingsView
           config={activeConfig}
           libraries={libraries}
@@ -312,6 +330,24 @@ export default function App() {
           )}
         </aside>
 
+        {file && (
+          <aside className="flex w-72 shrink-0 flex-col border-r border-ink-800 bg-ink-900">
+            <DefinitionsPanel
+              key={file.path}
+              path={file.path}
+              canWrite={status.workspace.allowWrites}
+              onEdit={(kind, name, definition) =>
+                setEditing({
+                  kind: kind === 'overlay' ? 'overlay' : 'collection',
+                  target: { path: file.path, name, definition },
+                })
+              }
+              onChanged={() => openFile(file.path)}
+              notify={notify}
+            />
+          </aside>
+        )}
+
         <main className="flex min-w-0 flex-1 flex-col">
           <div className="min-h-0 flex-1">
             {file ? (
@@ -345,14 +381,24 @@ export default function App() {
       </div>
       )}
 
-      {creating && catalog && (
+      {(creating || editing) && catalog && (
         <NewDefinitionDialog
           catalog={catalog}
-          kind={creating}
-          targets={creating === 'overlay' ? overlayTargets : collectionTargets}
+          kind={editing?.kind ?? creating!}
+          editing={editing?.target ?? null}
+          targets={
+            editing
+              ? [editing.target.path]
+              : creating === 'overlay'
+                ? overlayTargets
+                : collectionTargets
+          }
           libraryTypeByFile={libraryTypeByFile}
           libraryByFile={libraryByFile}
-          onClose={() => setCreating(null)}
+          onClose={() => {
+            setCreating(null)
+            setEditing(null)
+          }}
           onCreated={(path) => {
             setView('files')
             openFile(path)
@@ -412,7 +458,7 @@ function Header({
       <span className="font-semibold text-ink-100">KometaUI</span>
 
       <nav className="flex shrink-0 overflow-hidden rounded border border-ink-700">
-        {(['files', 'defaults', 'settings', 'connections'] as const).map((tab) => (
+        {(['files', 'defaults', 'settings', 'connections', 'maintenance'] as const).map((tab) => (
           <button
             key={tab}
             type="button"

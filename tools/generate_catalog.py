@@ -106,6 +106,19 @@ DETAIL_CONSTANTS = {
     "collectionless_details": "collectionless",
 }
 
+# Kometa defines its filter vocabulary as a category per attribute list plus the modifier
+# suffixes valid for that category, and composes `all_filters` from their cross product.
+# Reproducing that here is what lets the UI offer the right modifiers for each attribute
+# instead of a free-text box.
+FILTER_CATEGORIES = {
+    "string": ("string_filters", "string_modifiers"),
+    "tag": ("tag_filters", "tag_modifiers"),
+    "date": ("date_filters", "date_modifiers"),
+    "number": ("number_filters", "number_modifiers"),
+}
+# Booleans and "special" filters take no modifier at all.
+FILTER_PLAIN = {"boolean": "boolean_filters", "special": "special_filters"}
+
 PLEX_CONSTANTS = [
     "builders",
     "search_translation",
@@ -466,6 +479,58 @@ def _walk_if_chain(all_of: list[dict[str, Any]]) -> dict[str, str]:
     return bindings
 
 
+def build_filters(reader: SourceReader) -> dict[str, Any]:
+    """Describe every filter attribute: its category, and the modifiers it accepts.
+
+    ``filters`` is the part of a collection the schema is least able to help with -- it is
+    typed as a free-form object, so a generated form can only offer a text box. Kometa
+    does know the answer though, as a set of per-category attribute lists crossed with the
+    modifier suffixes valid for that category. Flattening that into
+    ``attribute -> {category, modifiers}`` is what lets the UI offer real dropdowns.
+    """
+    attributes: dict[str, dict[str, Any]] = {}
+
+    for category, (names_const, modifiers_const) in FILTER_CATEGORIES.items():
+        names = reader.try_get("builder", names_const) or []
+        modifiers = reader.try_get("builder", modifiers_const) or []
+        for name in names:
+            if isinstance(name, str):
+                attributes[name] = {"category": category, "modifiers": list(modifiers)}
+
+    for category, names_const in FILTER_PLAIN.items():
+        for name in reader.try_get("builder", names_const) or []:
+            if isinstance(name, str):
+                attributes.setdefault(name, {"category": category, "modifiers": [""]})
+
+    # Which filters apply to which library type, so a Movies library is not offered
+    # `episode_title`.
+    #
+    # Kometa derives this as `filters`, a dict of two-generator comprehensions over
+    # `filters_by_type`. Rather than teach the evaluator nested comprehensions for one
+    # constant, reproduce the same derivation from `filters_by_type`, which is a plain
+    # literal: its keys are underscore-joined type lists such as
+    # "movie_show_season_episode_artist_album_track", and Kometa selects with a substring
+    # test, which is what is mirrored here.
+    library_types = ["movie", "show", "season", "episode", "artist", "album", "track"]
+    by_type: dict[str, list[str]] = {name: [] for name in library_types}
+    for key, names in (reader.try_get("builder", "filters_by_type") or {}).items():
+        if not isinstance(names, list):
+            continue
+        for library_type in library_types:
+            if library_type in str(key):
+                by_type[library_type].extend(n for n in names if isinstance(n, str))
+    by_type = {name: _dedupe(values) for name, values in by_type.items() if values}
+
+    return {
+        "attributes": dict(sorted(attributes.items())),
+        "by_library_type": by_type,
+        "modifiers_by_category": {
+            category: reader.try_get("builder", modifiers_const) or []
+            for category, (_, modifiers_const) in FILTER_CATEGORIES.items()
+        },
+    }
+
+
 def build_builder_examples(source: Path, builders: set[str]) -> dict[str, dict[str, Any]]:
     """Lift worked examples for each builder out of Kometa's own example files.
 
@@ -617,6 +682,7 @@ def main() -> int:
 
     collection_props = build_schema_property_index(collection_schema, "collection-definition")
     builder_examples = build_builder_examples(source, set(builder_groups.get("all", [])))
+    filters = build_filters(reader)
 
     # Every builder the schema knows about should be attributed to a service; anything
     # left over is surfaced so the grouping stays honest as Kometa evolves.
@@ -642,6 +708,7 @@ def main() -> int:
         # Worked examples and one-line hints, keyed by builder. This is what the UI shows
         # when the schema alone cannot convey the shape of a value.
         "builder_examples": builder_examples,
+        "filters": filters,
         # Consumed by the validator to suppress false "additional property" errors.
         "builders_missing_from_schema": missing_from_schema,
         "diagnostics": {
@@ -679,6 +746,7 @@ def main() -> int:
     print(f"  defaults         {len(defaults['collections']['names'])} collection, "
           f"{len(defaults['overlays']['names'])} overlay")
     print(f"  builder examples {len(builder_examples)} builders documented")
+    print(f"  filters          {len(filters['attributes'])} attributes, {len(filters['by_library_type'])} library types")
     print(f"  schemas vendored {len(copied)}")
     if reader.unresolved:
         print(f"  ! {len(reader.unresolved)} unresolved constant(s):", file=sys.stderr)

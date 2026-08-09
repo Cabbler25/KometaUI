@@ -114,6 +114,39 @@ export interface BuilderDocs {
   examples: string[]
 }
 
+export interface FilterCatalog {
+  attributes: Record<string, { category: string; modifiers: string[] }>
+  by_library_type: Record<string, string[]>
+  modifiers_by_category: Record<string, string[]>
+}
+
+export interface DefinitionSummary {
+  name: string
+  builders: string[]
+  hasFilters: boolean
+  usesTemplate: boolean
+  settingCount: number
+}
+
+export interface BackupEntry {
+  stamp: string
+  takenAt: string
+  size: number
+}
+
+export interface MigrationFinding {
+  id: string
+  file: string
+  location: string
+  key: string
+  message: string
+  severity: 'error' | 'warning' | 'info'
+  fixable: boolean
+  /** True when applying the fix changes what Kometa does, not just how it is spelled. */
+  changesBehaviour: boolean
+  detail: string
+}
+
 export interface Catalog {
   kometa_version: string
   services: Record<string, { label: string; builders: string[] }>
@@ -123,6 +156,7 @@ export interface Catalog {
   collection_property_descriptions: Record<string, string>
   builders_missing_from_schema: string[]
   builder_examples: Record<string, BuilderDocs>
+  filters: FilterCatalog
 }
 
 export interface EditResult {
@@ -131,6 +165,10 @@ export interface EditResult {
   text: string
   backup?: string | null
   validation?: ValidationResult
+  /** Unified diff of the change; present on both dry runs and real writes. */
+  diff?: string[]
+  stats?: { added: number; removed: number }
+  dryRun?: boolean
 }
 
 export interface PlexPin {
@@ -344,10 +382,11 @@ export const api = {
     path: string,
     name: string,
     definition: Record<string, unknown>,
+    dryRun = false,
   ) =>
     request<EditResult>(kind === 'overlay' ? '/api/overlays/add' : '/api/collections/add', {
       method: 'POST',
-      body: JSON.stringify({ path, name, definition }),
+      body: JSON.stringify({ path, name, definition, dry_run: dryRun }),
     }),
 
   setValue: (path: string, pointer: (string | number)[], value: unknown) =>
@@ -408,6 +447,76 @@ export const api = {
     }),
 
   /** Parse a YAML snippet server-side and return the value under `key`. */
+  // -- editing existing definitions --------------------------------------------------
+
+  listDefinitions: (path: string) =>
+    request<{ path: string; kind: string | null; key?: string; definitions: DefinitionSummary[] }>(
+      `/api/definitions?path=${encodeURIComponent(path)}`,
+    ),
+
+  readDefinition: (path: string, kind: string, name: string) =>
+    request<{ name: string; kind: string; definition: Record<string, unknown> }>(
+      '/api/definitions/read',
+      { method: 'POST', body: JSON.stringify({ path, kind, name }) },
+    ),
+
+  saveDefinition: (
+    path: string,
+    kind: string,
+    name: string,
+    definition: Record<string, unknown>,
+    dryRun = false,
+  ) =>
+    request<EditResult>('/api/definitions/save', {
+      method: 'POST',
+      body: JSON.stringify({ path, kind, name, definition, dry_run: dryRun }),
+    }),
+
+  renameDefinition: (path: string, kind: string, name: string, newName: string, dryRun = false) =>
+    request<EditResult>('/api/definitions/rename', {
+      method: 'POST',
+      body: JSON.stringify({ path, kind, name, new_name: newName, dry_run: dryRun }),
+    }),
+
+  deleteDefinition: (path: string, kind: string, name: string, dryRun = false) =>
+    request<EditResult>('/api/definitions/delete', {
+      method: 'POST',
+      body: JSON.stringify({ path, kind, name, dry_run: dryRun }),
+    }),
+
+  // -- history -------------------------------------------------------------------------
+
+  listBackups: (path: string) =>
+    request<{ path: string; backups: BackupEntry[] }>(
+      `/api/backups?path=${encodeURIComponent(path)}`,
+    ),
+
+  backupDiff: (path: string, stamp: string) =>
+    request<{ diff: string[]; stats: { added: number; removed: number }; text: string }>(
+      `/api/backups/diff?path=${encodeURIComponent(path)}&stamp=${encodeURIComponent(stamp)}`,
+    ),
+
+  restoreBackup: (path: string, stamp: string) =>
+    request<{ path: string; text: string; validation: ValidationResult }>('/api/backups/restore', {
+      method: 'POST',
+      body: JSON.stringify({ path, stamp }),
+    }),
+
+  // -- deprecation assistant -------------------------------------------------------------
+
+  scanMigrations: (config: string) =>
+    request<{
+      config: string
+      findings: MigrationFinding[]
+      summary: { total: number; safe: number; needsReview: number }
+    }>(`/api/migrations?config=${encodeURIComponent(config)}`),
+
+  applyMigrations: (config: string, ids: string[], dryRun = false) =>
+    request<EditResult & { applied: string[] }>('/api/migrations/apply', {
+      method: 'POST',
+      body: JSON.stringify({ config, ids, dry_run: dryRun }),
+    }),
+
   parseSnippet: (text: string, key?: string) =>
     request<{ value: unknown }>('/api/yaml/parse', {
       method: 'POST',

@@ -19,6 +19,7 @@ Early development. See `docs/ARCHITECTURE.md` for the design.
 | M3 | Plex read-only, connections, library discovery | done |
 | M5 | Overlay authoring, settings and operations forms | done |
 | M6 | Collection preview, Windows packaging | done |
+| M7 | Editing existing definitions, filters, diffs, migrations | done |
 
 ## Creating things without writing YAML
 
@@ -35,8 +36,18 @@ Neither has hand-written per-field code. The backend turns Kometa's JSON Schema 
 field descriptors and the frontend renders one component per control type, so the forms
 track Kometa releases instead of drifting from them.
 
+Existing collections and overlays open in the same generated form, pre-filled — creating
+one and maintaining it use the same UI.
+
+**Filters** get a dedicated row editor rather than a text box. Kometa groups every filter
+attribute into a category (string, tag, date, number, boolean) and permits a specific set
+of modifier suffixes per category; the catalog carries that map, so each row is two
+dropdowns and a value.
+
 Edits are applied surgically — the affected lines are spliced, never the whole document —
-so comments, key order, and formatting survive. Every write makes a timestamped backup.
+so comments, key order, and formatting survive. Every write shows a **diff first** and
+takes a timestamped backup, and the **Maintenance** tab lists those backups so any save
+can be rolled back.
 
 ## Connections
 
@@ -53,6 +64,20 @@ only to your own config files.
 The Plex token is held by the backend, not the browser — it survives a page reload, and it
 is never sent to the client. If your config already contains a working token, the session
 adopts it and you are never asked to sign in.
+
+## Outdated keys
+
+The **Maintenance** tab finds config keys Kometa has renamed or stopped reading, and
+offers the mechanical rewrite. Renames are pre-selected; anything that changes what Kometa
+*does* is held back under "Needs review" and excluded from bulk apply.
+
+One of those is worth knowing about. `delete_unmanaged_collections` is silently inert in
+Kometa 2.4.6: its compatibility shim writes `delete_collections["unmanaged"]`, and the
+parser only ever reads `managed`/`configured`/`less`. Restoring the intended behaviour
+means `delete_collections: {managed: false}` — Kometa's `_should_be_deleted` compares
+`managed_in == is_managed`, so `false` targets collections *without* the Kometa label.
+Writing `true` there would delete every collection Kometa built, which is why this rewrite
+is opt-in and the mapping is pinned by a test.
 
 ## Previewing a collection
 

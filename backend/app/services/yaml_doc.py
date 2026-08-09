@@ -11,7 +11,7 @@ from __future__ import annotations
 import io
 import shutil
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -94,18 +94,11 @@ def round_trip(text: str) -> str:
     ruamel rewrites to two).
 
     Those cosmetic rewrites are harmless but noisy: a user who changes one field does not
-    want a diff touching 40 unrelated lines. So a full parse/dump cycle is reserved for
-    documents we are rewriting wholesale. Text the user edited directly is saved verbatim
-    via :func:`save_text`, and form-driven edits should splice the specific node rather
-    than re-dumping (see the module TODO).
+    want a diff touching 40 unrelated lines. So a full parse/dump cycle is never used to
+    save a user's file. Text they typed is written verbatim by :func:`save_text`, and
+    form-driven edits splice individual nodes via :mod:`yaml_edit`.
     """
     return dumps(loads(text))
-
-
-# TODO(M2): form-driven edits currently have no surgical path. When forms land, locate the
-# target node via ruamel's ``.lc`` line/column data and splice just those lines, falling
-# back to a full dump only when the node cannot be located. Without this, editing one
-# field in a form would reformat the whole file.
 
 
 def save_text(path: Path, text: str, retention: int = 20) -> Path | None:
@@ -137,8 +130,7 @@ def write_with_backup(path: Path, text: str, retention: int = 20) -> Path | None
     if path.exists():
         backup_dir = path.parent / BACKUP_SUFFIX
         backup_dir.mkdir(exist_ok=True)
-        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        backup_path = backup_dir / f"{path.name}.{stamp}"
+        backup_path = _next_backup_path(backup_dir, path.name)
         shutil.copy2(path, backup_path)
         _prune_backups(backup_dir, path.name, retention)
 
@@ -146,6 +138,24 @@ def write_with_backup(path: Path, text: str, retention: int = 20) -> Path | None
     # clean for users who keep their config in git.
     path.write_text(text, encoding="utf-8", newline="\n")
     return backup_path
+
+
+def _next_backup_path(backup_dir: Path, filename: str) -> Path:
+    """Pick a backup filename that is not already taken.
+
+    Timestamps alone are not enough. Second resolution lost history outright -- two saves
+    in the same second overwrote each other, and correcting a form within a second is
+    normal. Microseconds make that unlikely but not impossible, and the clock's actual
+    granularity is platform-dependent. Since a collision silently destroys a version,
+    uniqueness is checked rather than assumed: the stamp advances until the name is free.
+    """
+    now = datetime.now()
+    for offset in range(10_000):
+        stamp = (now + timedelta(microseconds=offset)).strftime("%Y%m%d-%H%M%S-%f")
+        candidate = backup_dir / f"{filename}.{stamp}"
+        if not candidate.exists():
+            return candidate
+    raise OSError(f"Could not find a free backup name for {filename}")
 
 
 def _prune_backups(backup_dir: Path, filename: str, retention: int) -> None:

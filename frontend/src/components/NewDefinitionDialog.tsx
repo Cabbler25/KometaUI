@@ -17,16 +17,28 @@ import {
   api,
   type BuilderDocs,
   type Catalog,
+  type EditResult,
   type FormField,
   type PreviewResult,
 } from '../lib/api'
+import { DiffDialog } from './DiffDialog'
+import { FiltersEditor, type FilterValues } from './FiltersEditor'
 import { SchemaForm, type FormValues } from './SchemaForm'
 
 export type DefinitionKind = 'collection' | 'overlay'
 
+/** An existing definition being edited, rather than a new one being created. */
+export interface EditTarget {
+  path: string
+  name: string
+  definition: Record<string, unknown>
+}
+
 interface Props {
   catalog: Catalog
   kind: DefinitionKind
+  /** Absent when creating. */
+  editing?: EditTarget | null
   /** Files of the matching kind the user could add to. */
   targets: string[]
   /**
@@ -44,6 +56,7 @@ interface Props {
 export function NewDefinitionDialog({
   catalog,
   kind,
+  editing = null,
   targets,
   libraryTypeByFile,
   libraryByFile,
@@ -51,20 +64,45 @@ export function NewDefinitionDialog({
   onCreated,
   notify,
 }: Props) {
-  const [target, setTarget] = useState(targets[0] ?? '')
-  const [name, setName] = useState('')
-  const [builder, setBuilder] = useState<string | null>(null)
+  const isEdit = editing !== null
+  const allBuilders = useMemo(
+    () => new Set(catalog.builder_groups.all ?? []),
+    [catalog],
+  )
+
+  // When editing, split the stored definition back into the three things the form edits:
+  // its builder, its filters, and everything else.
+  const seed = useMemo(() => {
+    if (!editing) return null
+    const entries = Object.entries(editing.definition)
+    const builderEntry = entries.find(([k]) => allBuilders.has(k))
+    return {
+      builder: builderEntry?.[0] ?? null,
+      builderValue: builderEntry?.[1],
+      filters: (editing.definition.filters as FilterValues) ?? {},
+      details: Object.fromEntries(
+        entries.filter(([k]) => !allBuilders.has(k) && k !== 'filters'),
+      ) as FormValues,
+    }
+  }, [editing, allBuilders])
+
+  const [target, setTarget] = useState(editing?.path ?? targets[0] ?? '')
+  const [name, setName] = useState(editing?.name ?? '')
+  const [builder, setBuilder] = useState<string | null>(seed?.builder ?? null)
   const [builderField, setBuilderField] = useState<FormField | null>(null)
-  const [builderValue, setBuilderValue] = useState<unknown>(undefined)
+  const [builderValue, setBuilderValue] = useState<unknown>(seed?.builderValue)
   const [builderDocs, setBuilderDocs] = useState<BuilderDocs>({ hint: '', examples: [] })
-  const [details, setDetails] = useState<FormValues>({})
+  const [details, setDetails] = useState<FormValues>(seed?.details ?? {})
+  const [filters, setFilters] = useState<FilterValues>(seed?.filters ?? {})
   const [detailFields, setDetailFields] = useState<FormField[]>([])
   const [query, setQuery] = useState('')
   const [saving, setSaving] = useState(false)
   const [previewing, setPreviewing] = useState(false)
   const [preview, setPreview] = useState<PreviewResult | null>(null)
   const [previewNote, setPreviewNote] = useState<string | null>(null)
-  const [showDetails, setShowDetails] = useState(false)
+  const [showDetails, setShowDetails] = useState(Object.keys(seed?.details ?? {}).length > 0)
+  const [showFilters, setShowFilters] = useState(Object.keys(seed?.filters ?? {}).length > 0)
+  const [pending, setPending] = useState<EditResult | null>(null)
 
   // The target file determines which library the collection lands in, and therefore which
   // builders can apply to it.
@@ -146,8 +184,10 @@ export function NewDefinitionDialog({
   const definition = useMemo(() => {
     const out: Record<string, unknown> = {}
     if (builder) out[builder] = hasValue ? builderValue : true
-    return { ...out, ...details }
-  }, [builder, builderValue, hasValue, details])
+    const composed: Record<string, unknown> = { ...out, ...details }
+    if (Object.keys(filters).length > 0) composed.filters = filters
+    return composed
+  }, [builder, builderValue, hasValue, details, filters])
 
   const canCreate = Boolean(target && name.trim() && builder && (!needsValue || hasValue))
 
@@ -185,11 +225,45 @@ export function NewDefinitionDialog({
     }
   }
 
-  async function create() {
+  /** Compute the change without writing, so it can be confirmed first. */
+  async function review() {
     setSaving(true)
     try {
-      await api.addDefinition(kind, target, name.trim(), definition)
-      notify(`Created “${name.trim()}” in ${target}`)
+      const result = isEdit
+        ? await api.saveDefinition(target, kind, editing!.name, definition, true)
+        : await api.addDefinition(kind, target, name.trim(), definition, true)
+      if (!result.changed) {
+        notify('No changes to save')
+        return
+      }
+      setPending(result)
+    } catch (e) {
+      notify(e instanceof ApiError ? e.message : String(e), 'bad')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function commit() {
+    setSaving(true)
+    try {
+      // A rename is a separate operation from a body edit; do it first so the body save
+      // targets the new name.
+      let saveName = name.trim()
+      if (isEdit && saveName && saveName !== editing!.name) {
+        await api.renameDefinition(target, kind, editing!.name, saveName)
+      } else if (isEdit) {
+        saveName = editing!.name
+      }
+
+      if (isEdit) {
+        await api.saveDefinition(target, kind, saveName, definition)
+        notify(`Saved “${saveName}”`)
+      } else {
+        await api.addDefinition(kind, target, saveName, definition)
+        notify(`Created “${saveName}” in ${target}`)
+      }
+      setPending(null)
       onCreated(target)
       onClose()
     } catch (e) {
@@ -204,7 +278,7 @@ export function NewDefinitionDialog({
       <div className="flex h-full max-h-[46rem] w-full max-w-5xl flex-col overflow-hidden rounded-lg border border-ink-700 bg-ink-900 shadow-2xl">
         <header className="flex shrink-0 items-center gap-3 border-b border-ink-800 px-4 py-2.5">
           <h2 className="font-semibold text-ink-100">
-            New {kind === 'overlay' ? 'overlay' : 'collection'}
+            {isEdit ? `Edit ${kind}` : `New ${kind === 'overlay' ? 'overlay' : 'collection'}`}
           </h2>
           <span className="text-ink-500">
             {services.reduce((n, s) => n + s.builders.length, 0)} builders ·{' '}
@@ -243,7 +317,9 @@ export function NewDefinitionDialog({
             id="c-target"
             value={target}
             onChange={(e) => setTarget(e.target.value)}
-            className="min-w-0 flex-1 rounded border border-ink-700 bg-ink-850 px-2 py-1 text-ink-100 outline-none"
+            disabled={isEdit}
+            className="min-w-0 flex-1 rounded border border-ink-700 bg-ink-850 px-2 py-1 text-ink-100 outline-none disabled:opacity-50"
+            title={isEdit ? 'Moving a definition between files is not supported yet' : undefined}
           >
             {targets.map((path) => (
               <option key={path} value={path}>
@@ -355,6 +431,32 @@ export function NewDefinitionDialog({
                     </div>
                   )}
                 </div>
+                <div className="shrink-0 border-t border-ink-800">
+                  <button
+                    type="button"
+                    onClick={() => setShowFilters((v) => !v)}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-ink-400 hover:bg-ink-800"
+                  >
+                    <span className="text-[9px]">{showFilters ? '▼' : '▶'}</span>
+                    Filters
+                    <span className="text-ink-600">
+                      {Object.keys(filters).length > 0
+                        ? `${Object.keys(filters).length} applied`
+                        : 'narrow the results'}
+                    </span>
+                  </button>
+                  {showFilters && (
+                    <div className="max-h-56 overflow-auto border-t border-ink-800 p-3">
+                      <FiltersEditor
+                        catalog={catalog}
+                        libraryType={libraryType}
+                        values={filters}
+                        onChange={setFilters}
+                      />
+                    </div>
+                  )}
+                </div>
+
                 {/* Collapsed by default: choosing a builder is the point of this dialog,
                     and a permanently-open 161-field form crowds out the examples that
                     explain the builder. */}
@@ -462,14 +564,28 @@ export function NewDefinitionDialog({
           </button>
           <button
             type="button"
-            onClick={create}
+            onClick={review}
             disabled={!canCreate || saving}
             className="rounded bg-accent px-3 py-1 font-medium text-ink-950 hover:brightness-110 disabled:opacity-30"
           >
-            {saving ? 'Creating…' : `Create ${kind}`}
+            {saving ? 'Checking…' : isEdit ? 'Review changes' : `Create ${kind}`}
           </button>
         </footer>
       </div>
+
+      {pending && (
+        <DiffDialog
+          title={isEdit ? 'Review changes' : 'Review new definition'}
+          path={target}
+          diff={pending.diff ?? []}
+          stats={pending.stats}
+          validation={pending.validation}
+          busy={saving}
+          confirmLabel={isEdit ? 'Save' : `Create ${kind}`}
+          onConfirm={commit}
+          onCancel={() => setPending(null)}
+        />
+      )}
     </div>
   )
 }

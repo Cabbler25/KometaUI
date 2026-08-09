@@ -19,6 +19,24 @@ from .yaml_edit import (
     set_scalar,
 )
 
+# Re-exported so callers compose document operations through this module rather than
+# reaching into the low-level editor.
+__all__ = [
+    "DEFAULT_KEYS",
+    "FILE_LIST_FOR_KIND",
+    "add_collection",
+    "add_default",
+    "add_overlay",
+    "delete_node",
+    "enabled_defaults",
+    "insert_mapping_entry",
+    "merge_mapping",
+    "remove_default",
+    "remove_value",
+    "set_default_template_variables",
+    "set_value",
+]
+
 # Kometa reads defaults from these keys; `pmm` is the pre-rename spelling still found in
 # live configs. New entries are always written as `default`, but existing `pmm` entries
 # are recognised so the UI can show what is already enabled.

@@ -13,7 +13,16 @@ from ruamel.yaml.error import YAMLError
 
 from .. import state
 from ..config import settings
-from ..services import connections, documents, plex_client, preview, schema_form, validation
+from ..services import (
+    backups,
+    connections,
+    documents,
+    migrations,
+    plex_client,
+    preview,
+    schema_form,
+    validation,
+)
 from ..services.workspace import ReadOnlyError, Workspace, WorkspaceError
 from ..services.yaml_doc import loads
 from ..services.yaml_edit import EditError
@@ -319,8 +328,14 @@ def default_form(kind: str, name: str) -> dict[str, Any]:
 # ----------------------------------------------------------------------------------
 
 
-def _apply(path: str, mutate) -> dict[str, Any]:
-    """Read, transform, save, and re-validate a workspace file."""
+def _apply(path: str, mutate, dry_run: bool = False) -> dict[str, Any]:
+    """Read, transform, save, and re-validate a workspace file.
+
+    With ``dry_run`` the transform runs and the diff is returned, but nothing is written.
+    That is what lets the UI show exactly which lines an edit would touch before
+    committing to it -- the point of the surgical editor is that the answer is small, and
+    showing it is what makes that visible.
+    """
     workspace = _workspace()
     try:
         original = workspace.read(path)
@@ -330,8 +345,23 @@ def _apply(path: str, mutate) -> dict[str, Any]:
     except WorkspaceError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    diff = backups.unified_diff(original, updated, path)
+
     if updated == original:
-        return {"path": path, "changed": False, "text": original}
+        return {"path": path, "changed": False, "text": original, "diff": [], "stats": backups.diff_stats([])}
+
+    if dry_run:
+        # Still validate, so the confirmation step can warn before anything is written.
+        result = validation.validate_text(updated, path)
+        return {
+            "path": path,
+            "changed": True,
+            "dryRun": True,
+            "text": updated,
+            "diff": diff,
+            "stats": backups.diff_stats(diff),
+            "validation": validation.result_to_dict(result),
+        }
 
     try:
         backup = workspace.write(path, updated, settings.backup_retention)
@@ -344,8 +374,11 @@ def _apply(path: str, mutate) -> dict[str, Any]:
     return {
         "path": path,
         "changed": True,
+        "dryRun": False,
         "text": updated,
         "backup": backup,
+        "diff": diff,
+        "stats": backups.diff_stats(diff),
         "validation": validation.result_to_dict(result),
     }
 
@@ -377,6 +410,7 @@ class AddDefinitionRequest(BaseModel):
     path: str
     name: str
     definition: dict[str, Any]
+    dry_run: bool = False
 
 
 class SetValueRequest(BaseModel):
@@ -425,12 +459,20 @@ def set_template_variables(request: TemplateVariablesRequest) -> dict[str, Any]:
 
 @router.post("/collections/add")
 def add_collection(request: AddDefinitionRequest) -> dict[str, Any]:
-    return _apply(request.path, lambda text: documents.add_collection(text, request.name, request.definition))
+    return _apply(
+        request.path,
+        lambda text: documents.add_collection(text, request.name, request.definition),
+        dry_run=request.dry_run,
+    )
 
 
 @router.post("/overlays/add")
 def add_overlay(request: AddDefinitionRequest) -> dict[str, Any]:
-    return _apply(request.path, lambda text: documents.add_overlay(text, request.name, request.definition))
+    return _apply(
+        request.path,
+        lambda text: documents.add_overlay(text, request.name, request.definition),
+        dry_run=request.dry_run,
+    )
 
 
 @router.post("/documents/set")
@@ -447,6 +489,7 @@ class MergeRequest(BaseModel):
     path: str
     pointer: list[Any]
     values: dict[str, Any] = Field(default_factory=dict)
+    dry_run: bool = False
 
 
 @router.post("/documents/merge")
@@ -455,6 +498,7 @@ def merge_mapping(request: MergeRequest) -> dict[str, Any]:
     return _apply(
         request.path,
         lambda text: documents.merge_mapping(text, request.pointer, request.values),
+        dry_run=request.dry_run,
     )
 
 
@@ -704,6 +748,249 @@ def preview_supported(request: PreviewRequest) -> dict[str, Any]:
     """Whether a definition could be previewed, without contacting Plex."""
     ok, blocking = preview.previewable(request.definition)
     return {"previewable": ok, "blocking": blocking}
+
+
+# ----------------------------------------------------------------------------------
+# Definitions: editing what already exists
+# ----------------------------------------------------------------------------------
+
+DEFINITION_KEY = {"collection": "collections", "overlay": "overlays", "playlist": "playlists"}
+
+
+class DefinitionRequest(BaseModel):
+    path: str
+    kind: str = "collection"
+    name: str
+    definition: dict[str, Any] = Field(default_factory=dict)
+    dry_run: bool = False
+
+
+class RenameDefinitionRequest(BaseModel):
+    path: str
+    kind: str = "collection"
+    name: str
+    new_name: str
+    dry_run: bool = False
+
+
+def _definition_key(kind: str) -> str:
+    key = DEFINITION_KEY.get(kind)
+    if key is None:
+        raise HTTPException(status_code=400, detail=f"Unknown definition kind: {kind}")
+    return key
+
+
+@router.get("/definitions")
+def list_definitions(path: str) -> dict[str, Any]:
+    """Summarise the definitions in a file, so they can be listed and opened.
+
+    Each entry reports which builders it uses and how many other attributes it sets --
+    enough for a list without shipping the whole file to the client.
+    """
+    workspace = _workspace()
+    try:
+        data = loads(workspace.read(path))
+    except WorkspaceError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except YAMLError as exc:
+        raise HTTPException(status_code=400, detail=f"Could not parse {path}: {exc}") from exc
+
+    if not isinstance(data, dict):
+        return {"path": path, "kind": None, "definitions": []}
+
+    catalog = validation.load_catalog()
+    all_builders = set(catalog.get("builder_groups", {}).get("all", []))
+
+    for kind, key in DEFINITION_KEY.items():
+        block = data.get(key)
+        if not isinstance(block, dict):
+            continue
+        definitions = []
+        for name, body in block.items():
+            body = body if isinstance(body, dict) else {}
+            builders = [k for k in body if k in all_builders]
+            definitions.append(
+                {
+                    "name": str(name),
+                    "builders": builders,
+                    "hasFilters": "filters" in body,
+                    "usesTemplate": "template" in body,
+                    "settingCount": sum(
+                        1 for k in body if k not in builders and k not in ("filters", "template")
+                    ),
+                }
+            )
+        return {"path": path, "kind": kind, "key": key, "definitions": definitions}
+
+    return {"path": path, "kind": None, "definitions": []}
+
+
+@router.post("/definitions/read")
+def read_definition(request: DefinitionRequest) -> dict[str, Any]:
+    """Load one definition for editing.
+
+    A POST because collection names routinely contain characters -- colons, slashes,
+    dots -- that make them poor URL path segments.
+    """
+    workspace = _workspace()
+    key = _definition_key(request.kind)
+    try:
+        data = loads(workspace.read(request.path))
+    except WorkspaceError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except YAMLError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    block = data.get(key) if isinstance(data, dict) else None
+    if not isinstance(block, dict) or request.name not in block:
+        raise HTTPException(status_code=404, detail=f"No {request.kind} named {request.name!r}")
+
+    return {"name": request.name, "kind": request.kind, "definition": _plain(block[request.name])}
+
+
+@router.post("/definitions/save")
+def save_definition(request: DefinitionRequest) -> dict[str, Any]:
+    """Update an existing definition, reconciling it key by key."""
+    key = _definition_key(request.kind)
+    return _apply(
+        request.path,
+        lambda text: documents.merge_mapping(text, [key, request.name], request.definition),
+        dry_run=request.dry_run,
+    )
+
+
+@router.post("/definitions/rename")
+def rename_definition(request: RenameDefinitionRequest) -> dict[str, Any]:
+    """Rename a definition, keeping its body intact."""
+    key = _definition_key(request.kind)
+
+    def mutate(text: str) -> str:
+        data = loads(text)
+        block = data.get(key) if isinstance(data, dict) else None
+        if not isinstance(block, dict) or request.name not in block:
+            raise EditError(f"No {request.kind} named {request.name!r}")
+        if request.new_name in block:
+            raise EditError(f"{request.new_name!r} already exists")
+        body = block[request.name]
+        updated = documents.insert_mapping_entry(text, [key], request.new_name, body)
+        return documents.delete_node(updated, [key, request.name])
+
+    return _apply(request.path, mutate, dry_run=request.dry_run)
+
+
+@router.post("/definitions/delete")
+def delete_definition(request: DefinitionRequest) -> dict[str, Any]:
+    key = _definition_key(request.kind)
+    return _apply(
+        request.path,
+        lambda text: documents.remove_value(text, [key, request.name]),
+        dry_run=request.dry_run,
+    )
+
+
+# ----------------------------------------------------------------------------------
+# Backups and change history
+# ----------------------------------------------------------------------------------
+
+
+class RestoreRequest(BaseModel):
+    path: str
+    stamp: str
+
+
+@router.get("/backups")
+def list_backups(path: str) -> dict[str, Any]:
+    workspace = _workspace()
+    try:
+        target = workspace.resolve(path)
+    except WorkspaceError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"path": path, "backups": [b.as_dict() for b in backups.list_backups(target)]}
+
+
+@router.get("/backups/diff")
+def backup_diff(path: str, stamp: str) -> dict[str, Any]:
+    """Diff a backup against the file as it stands now."""
+    workspace = _workspace()
+    target = workspace.resolve(path)
+    try:
+        previous = backups.read_backup(target, stamp)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    current = workspace.read(path)
+    # Ordered backup -> current, so the diff reads as "what changed since then".
+    diff = backups.unified_diff(previous, current, path)
+    return {"path": path, "stamp": stamp, "diff": diff, "stats": backups.diff_stats(diff), "text": previous}
+
+
+@router.post("/backups/restore")
+def restore_backup(request: RestoreRequest) -> dict[str, Any]:
+    workspace = _workspace()
+    if not workspace.allow_writes:
+        raise HTTPException(status_code=423, detail="This workspace is read-only.")
+
+    target = workspace.resolve(request.path)
+    try:
+        restored = backups.restore(target, request.stamp, settings.backup_retention)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    result = validation.validate_text(restored, request.path, prefer_kometa_path=target)
+    return {
+        "path": request.path,
+        "text": restored,
+        "validation": validation.result_to_dict(result),
+    }
+
+
+# ----------------------------------------------------------------------------------
+# Deprecation assistant
+# ----------------------------------------------------------------------------------
+
+
+class MigrationRequest(BaseModel):
+    config: str
+    ids: list[str] = Field(default_factory=list)
+    dry_run: bool = False
+
+
+@router.get("/migrations")
+def scan_migrations(config: str) -> dict[str, Any]:
+    """Outdated keys in a config, with what each rewrite would do."""
+    workspace = _workspace()
+    try:
+        text = workspace.read(config)
+    except WorkspaceError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    try:
+        found = migrations.scan_config(text, config)
+    except YAMLError as exc:
+        raise HTTPException(status_code=400, detail=f"Could not parse {config}: {exc}") from exc
+
+    return {
+        "config": config,
+        "findings": [f.as_dict() for f in found],
+        "summary": {
+            "total": len(found),
+            "safe": sum(1 for f in found if f.fixable and not f.changes_behaviour),
+            "needsReview": sum(1 for f in found if f.changes_behaviour),
+        },
+    }
+
+
+@router.post("/migrations/apply")
+def apply_migrations(request: MigrationRequest) -> dict[str, Any]:
+    applied: list[str] = []
+
+    def mutate(text: str) -> str:
+        nonlocal applied
+        updated, applied = migrations.scan_and_apply(text, request.config, request.ids)
+        return updated
+
+    result = _apply(request.config, mutate, dry_run=request.dry_run)
+    return {**result, "applied": applied}
 
 
 class SnippetRequest(BaseModel):

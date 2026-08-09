@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import re
 import shutil
 import sys
 from dataclasses import dataclass, field
@@ -465,6 +466,76 @@ def _walk_if_chain(all_of: list[dict[str, Any]]) -> dict[str, str]:
     return bindings
 
 
+def build_builder_examples(source: Path, builders: set[str]) -> dict[str, dict[str, Any]]:
+    """Lift worked examples for each builder out of Kometa's own example files.
+
+    ``json-schema/builders/*.yml`` are annotated galleries the Kometa team maintains --
+    real collections using each builder, with banner comments explaining what it does.
+    They answer the question a generated form cannot: a schema can say ``plex_search`` is
+    an object, but only an example shows that it takes ``all``/``any`` blocks with
+    ``sort_by`` and ``limit``.
+
+    Snippets are sliced out of the source text rather than parsed and re-emitted, so the
+    formatting stays exactly as written -- and the generator keeps needing nothing but the
+    standard library.
+    """
+    builders_dir = source / "json-schema" / "builders"
+    if not builders_dir.is_dir():
+        return {}
+
+    # Banner comments look like:  # plex_search — filter-block builder (all/any + ...)
+    banner = re.compile(r"^\s*#\s*([a-z][a-z0-9_]*)\s*(?:—|--|-)\s*(\S.*?)\s*$")
+    key_line = re.compile(r"^(\s*)([a-z][a-z0-9_]*):(.*)$")
+
+    out: dict[str, dict[str, Any]] = {}
+
+    for path in sorted(builders_dir.glob("*.yml")):
+        lines = path.read_text(encoding="utf-8").splitlines()
+
+        for index, line in enumerate(lines):
+            match = banner.match(line)
+            if match and match.group(1) in builders:
+                entry = out.setdefault(match.group(1), {"hint": "", "examples": []})
+                if not entry["hint"]:
+                    entry["hint"] = match.group(2)
+                continue
+
+            match = key_line.match(line)
+            if not match:
+                continue
+            indent, name, inline = match.group(1), match.group(2), match.group(3)
+            if name not in builders:
+                continue
+
+            entry = out.setdefault(name, {"hint": "", "examples": []})
+            snippet = [line]
+            if not inline.strip():
+                # Block value: take the following more-indented lines.
+                for following in lines[index + 1 :]:
+                    if not following.strip():
+                        snippet.append(following)
+                        continue
+                    if len(following) - len(following.lstrip(" ")) <= len(indent):
+                        break
+                    snippet.append(following)
+
+            while snippet and not snippet[-1].strip():
+                snippet.pop()
+
+            text = "\n".join(entry_line[len(indent) :] for entry_line in snippet)
+            if text not in entry["examples"]:
+                entry["examples"].append(text)
+
+    # Lead with the fullest example. Several files use the same builder minimally in
+    # passing, and `plex_search: {all: {genre: Action}}` teaches far less than the one
+    # showing `all`/`any`, `sort_by` and `limit` together.
+    for entry in out.values():
+        entry["examples"].sort(key=lambda text: -len(text.splitlines()))
+        del entry["examples"][4:]
+
+    return {name: value for name, value in out.items() if value["examples"] or value["hint"]}
+
+
 def build_schema_property_index(schema: dict[str, Any], definition: str) -> dict[str, str]:
     """Map each property of a definition to its description, for form help text."""
     node = schema.get("definitions", {}).get(definition, {})
@@ -545,6 +616,7 @@ def main() -> int:
     defaults = build_defaults(config_schema, source)
 
     collection_props = build_schema_property_index(collection_schema, "collection-definition")
+    builder_examples = build_builder_examples(source, set(builder_groups.get("all", [])))
 
     # Every builder the schema knows about should be attributed to a service; anything
     # left over is surfaced so the grouping stays honest as Kometa evolves.
@@ -567,6 +639,9 @@ def main() -> int:
         "plex": plex_tables,
         "defaults": defaults,
         "collection_property_descriptions": collection_props,
+        # Worked examples and one-line hints, keyed by builder. This is what the UI shows
+        # when the schema alone cannot convey the shape of a value.
+        "builder_examples": builder_examples,
         # Consumed by the validator to suppress false "additional property" errors.
         "builders_missing_from_schema": missing_from_schema,
         "diagnostics": {
@@ -603,6 +678,7 @@ def main() -> int:
     print(f"  plex tables      {len(plex_tables)}")
     print(f"  defaults         {len(defaults['collections']['names'])} collection, "
           f"{len(defaults['overlays']['names'])} overlay")
+    print(f"  builder examples {len(builder_examples)} builders documented")
     print(f"  schemas vendored {len(copied)}")
     if reader.unresolved:
         print(f"  ! {len(reader.unresolved)} unresolved constant(s):", file=sys.stderr)

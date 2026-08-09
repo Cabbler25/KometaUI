@@ -17,8 +17,8 @@ Early development. See `docs/ARCHITECTURE.md` for the design.
 | M2 | Surgical YAML editing, schema-derived forms | done |
 | M4 | Defaults browser, New Collection builder | done |
 | M3 | Plex read-only, connections, library discovery | done |
-| M5 | Overlay authoring, config forms surfaced in the UI | |
-| M6 | Collection preview, packaging | |
+| M5 | Overlay authoring, settings and operations forms | done |
+| M6 | Collection preview, Windows packaging | done |
 
 ## Creating things without writing YAML
 
@@ -50,6 +50,22 @@ apply.
 Plex access is **read-only**: KometaUI lists libraries and reports versions, and writes
 only to your own config files.
 
+The Plex token is held by the backend, not the browser — it survives a page reload, and it
+is never sent to the client. If your config already contains a working token, the session
+adopts it and you are never asked to sign in.
+
+## Previewing a collection
+
+Collections built from `plex_all`, `plex_search`, or plain `filters` can be previewed
+against the live library before Kometa ever runs, closing its slowest feedback loop. The
+translation from Kometa's filter syntax to PlexAPI's is driven by the tables lifted out of
+`modules/plex.py`, so the vocabulary stays in step with Kometa.
+
+Remote builders (`tmdb_*`, `trakt_*`, `imdb_*`, …) are **not** previewable — each needs its
+own credentials, rate-limit handling, and Kometa's ID-mapping cache. Rather than previewing
+a subset and letting the count mislead, the UI says which builders it cannot resolve, and
+flags any individual condition it had to skip.
+
 ## Layout
 
 ```
@@ -59,21 +75,31 @@ tools/      Build-time extraction from Kometa source
 docs/       Architecture notes
 ```
 
-## Development
+## Setup (Windows)
 
-Requires Python 3.12+ and Node 20+.
+Requires Python 3.12+ and Node 20+ on PATH.
 
-```bash
-# Backend
-cd backend
-python -m venv .venv && .venv/Scripts/activate   # Windows
-pip install -e ".[dev]"
-uvicorn app.main:app --reload --port 8770
+```powershell
+# One-time. -KometaSource is optional but recommended: it enables validation with
+# Kometa's own validator instead of the bundled schemas.
+.\setup.ps1 -KometaSource C:\Projects\KometaSource
 
-# Frontend
-cd frontend
-npm install
-npm run dev
+# Start it. Opens http://127.0.0.1:8770
+.\start.ps1 -Workspace "C:\Users\me\Plex Meta Manager\Plex-Meta-Manager\config"
+```
+
+`start.ps1` runs a single process serving both the API and the built UI. Writes are
+locked until you unlock them in the header, so pointing it at a live config cannot
+change anything by accident; pass `-AllowWrites` to skip that step.
+
+Kometa itself is only ever **read** — for its schemas, validator, and examples.
+KometaUI never runs it.
+
+### Working on the code
+
+```powershell
+cd backend;  .venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8770
+cd frontend; npm run dev     # http://localhost:5173, proxies /api to 8770
 ```
 
 > **Known limitation — in-editor schema hints need a production build.**

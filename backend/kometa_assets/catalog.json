@@ -2222,6 +2222,773 @@
     "sonarr_ignore_cache": "",
     "filters": "Filters applied to items found by builders."
   },
+  "builder_examples": {
+    "anidb_id": {
+      "hint": "anime specified by AniDB ID(s) or AniDB anime URLs",
+      "examples": [
+        "anidb_id: 8692, 8691, 13494"
+      ]
+    },
+    "anidb_relation": {
+      "hint": "all anime in the relation graph of the given AniDB ID",
+      "examples": [
+        "anidb_relation: 8692"
+      ]
+    },
+    "anidb_tag": {
+      "hint": "anime matching an AniDB tag ID",
+      "examples": [
+        "anidb_tag:\n  tag_id: 36\n  limit: 100"
+      ]
+    },
+    "anidb_tag_name": {
+      "hint": "anime matching AniDB tag(s) by name (case-insensitive)",
+      "examples": [
+        "anidb_tag_name:\n  tags:\n    - science fiction\n    - romance\n  min_weight: 400"
+      ]
+    },
+    "anilist_popular": {
+      "hint": "top N anime from AniList's Popular Anime list",
+      "examples": [
+        "anilist_popular: 20",
+        "anilist_popular: 50"
+      ]
+    },
+    "anilist_top_rated": {
+      "hint": "top N anime from AniList's Top Rated list",
+      "examples": [
+        "anilist_top_rated: 20",
+        "anilist_top_rated: 50"
+      ]
+    },
+    "anilist_trending": {
+      "hint": "top N anime from AniList's Trending list",
+      "examples": [
+        "anilist_trending: 10",
+        "anilist_trending: 50",
+        "anilist_trending: 25"
+      ]
+    },
+    "anilist_id": {
+      "hint": "anime specified by AniList ID(s)",
+      "examples": [
+        "anilist_id:\n  - 1\n  - 5114\n  - 11061",
+        "anilist_id: 1, 21"
+      ]
+    },
+    "anilist_relations": {
+      "hint": "anime specified by AniList ID plus every entry",
+      "examples": [
+        "anilist_relations: 21"
+      ]
+    },
+    "anilist_studio": {
+      "hint": "all anime from the given AniList Studio ID(s)",
+      "examples": [
+        "anilist_studio: 21"
+      ]
+    },
+    "anilist_userlist": {
+      "hint": "anime from a specific AniList user's list",
+      "examples": [
+        "anilist_userlist:\n  username: myanilistuser\n  list_name: Completed\n  sort_by: score\n  score.gte: 7.0"
+      ]
+    },
+    "anilist_search": {
+      "hint": "search AniList with detailed filters",
+      "examples": [
+        "anilist_search:\n  sort_by: popular\n  limit: 30\n  season: fall\n  year: 2023\n  format: tv\n  status: finished\n  genre: Action\n  tag: Shounen\n  min_tag_percent: 60\n  country: JP\n  source: manga\n  episodes.gte: 12\n  score.gte: 70"
+      ]
+    },
+    "tmdb_collection": {
+      "hint": "one collection per TMDb franchise/collection that",
+      "examples": [
+        "tmdb_collection:\n  - 131295\n  - 87359",
+        "tmdb_collection:\n  - 119\n  - 121938",
+        "tmdb_collection: 131295"
+      ]
+    },
+    "imdb_chart": {
+      "hint": "single chart string",
+      "examples": [
+        "imdb_chart:\n  - top_english\n  - popular_movies",
+        "imdb_chart: top_movies",
+        "imdb_chart: box_office",
+        "imdb_chart: popular_movies"
+      ]
+    },
+    "imdb_id": {
+      "hint": "comma-separated string",
+      "examples": [
+        "imdb_id:\n  - tt0816692\n  - tt0110912\n  - tt0137523\n  - tt0245429",
+        "imdb_id:\n  - tt0111161\n  - tt0068646\n  - tt0071562",
+        "imdb_id: tt0120737, tt0167261, tt0167260"
+      ]
+    },
+    "imdb_list": {
+      "hint": "simple string URL form",
+      "examples": [
+        "imdb_list:\n  - list_id: ls005526372\n    limit: 50\n    sort_by: popularity.asc\n  - list_id: ls062411875\n    limit: 75\n    sort_by: votes.desc\n  - url: https://www.imdb.com/list/ls095173850/\n    limit: 40",
+        "imdb_list:\n  list_id: ls005526372\n  limit: 100\n  sort_by: rating.desc",
+        "imdb_list:\n  url: https://www.imdb.com/list/ls000024390/\n  limit: 500",
+        "imdb_list:\n  url: https://www.imdb.com/list/ls000024390/\n  limit: 100"
+      ]
+    },
+    "imdb_watchlist": {
+      "hint": "object form with user_id, limit, sort_by",
+      "examples": [
+        "imdb_watchlist:\n  - user_id: ur12345678\n    limit: 100\n    sort_by: rating.desc\n  - user_id: ur98765432\n    limit: 50\n    sort_by: title.asc",
+        "imdb_watchlist:\n  user_id: ur12345678\n  limit: 50\n  sort_by: added.desc",
+        "imdb_watchlist:\n  userlist: user_watchlist\n  user: urXXXXXXXX"
+      ]
+    },
+    "imdb_award": {
+      "hint": "Academy Awards winners",
+      "examples": [
+        "imdb_award:\n  event_id: ev0000003\n  event_year:\n    - 2020\n    - 2021\n    - 2022\n    - 2023\n    - 2024\n  award_filter: Best Motion Picture of the Year\n  winning: true",
+        "imdb_award:\n  event_id: ev0000147\n  event_year: 2010-2024\n  award_filter:\n    - Palme d'Or\n    - Grand Prix\n  category_filter:\n    - Competition\n  winning: true",
+        "imdb_award:\n  event_id: ev0000292\n  event_year: 2023\n  category_filter: Best Motion Picture - Drama\n  winning: false",
+        "imdb_award:\n  event_id: ev0000558\n  event_year: 2015-2024\n  award_filter: Worst Picture\n  winning: true"
+      ]
+    },
+    "imdb_search": {
+      "hint": "minimal example (type + rating filter)",
+      "examples": [
+        "imdb_search:\n  # Output control\n  limit: 200\n  sort_by: votes.desc\n\n  # Title and type\n  title: the\n  type: movie\n  type.not: tv_episode,video_game\n\n  # Release window\n  release.after: \"2000-01-01\"\n  release.before: \"2024-12-31\"\n\n  # Ratings and votes\n  rating.gte: 6.5\n  rating.lte: 10.0\n  votes.gte: 10000\n  votes.lte: 3000000\n\n  # Genre\n  genre: drama,thriller\n  genre.any: crime,mystery\n  genre.not: horror,animation\n\n  # Interests (IMDb topic tags)\n  interests.any: based on novel or book,revenge\n\n  # Awards / rankings\n  event: oscar,bafta\n  event.winning: oscar\n  imdb_top: 1000\n\n  # Topics\n  topic: plot,trivia\n\n  # Company / studio\n  company: warner,universal\n\n  # Content rating\n  content_rating:\n    - rating: R\n      region: US\n    - rating: \"15\"\n      region: GB\n\n  # Country / origin\n  country.any: us,gb,fr\n  country.not: in\n  country.origin: us\n\n  # Keywords\n  keyword.any: spy,heist,time-travel\n  keyword.not: mockumentary\n\n  # IMDb lists membership\n  list.any: ls005526372,ls062411875\n\n  # Language\n  language.primary: en\n  language.not: zh,ko\n\n  # Popularity window\n  popularity.gte: 1\n  popularity.lte: 5000\n\n  # Cast & character\n  cast.any: nm0000093,nm0000190\n  character: detective\n\n  # Runtime\n  runtime.gte: 80\n  runtime.lte: 210\n\n  # Adult content\n  adult: false\n\n  # Text search fields\n  plot.any: murder,conspiracy\n  trivia.any: cameo,director\n  quote.any: you can't handle the truth\n  soundtrack.any: original score\n  location.any: new york,paris\n  alternate_version.not: director's cut\n  crazy_credit.any: dedicated to,in memory of\n  goof.not: continuity",
+        "imdb_search:\n  type: movie\n  rating.gte: 7.5\n  votes.gte: 50000\n  genre: drama\n  release.after: \"2015-01-01\"\n  sort_by: rating.desc\n  limit: 100",
+        "imdb_search:\n  type: movie\n  genre: action\n  rating.gte: 7.0\n  votes.gte: 50000\n  limit: 100\n  sort_by: rating.desc"
+      ]
+    },
+    "letterboxd_list": {
+      "hint": "movies from a Letterboxd list or film-search URL",
+      "examples": [
+        "letterboxd_list:\n  url: https://letterboxd.com/dave/list/official-top-250-narrative-feature-films/\n  limit: 100\n  sort_by: rating",
+        "letterboxd_list:\n  url: https://letterboxd.com/brianformo/list/vultures-101-best-movie-endings/\n  limit: 25",
+        "letterboxd_list: https://letterboxd.com/brianformo/list/vultures-101-best-movie-endings/",
+        "letterboxd_list: https://letterboxd.com/dave/list/official-top-250-narrative-feature-films/"
+      ]
+    },
+    "letterboxd_list_details": {
+      "hint": "same, but also pulls list description for metadata",
+      "examples": [
+        "letterboxd_list_details:\n  url: https://letterboxd.com/brianformo/list/vultures-101-best-movie-endings/\n  year: 1980-1989\n  rating: 7-10\n  limit: 20",
+        "letterboxd_list_details:\n  url: https://letterboxd.com/brianformo/list/vultures-101-best-movie-endings/\n  year: 1990-1999",
+        "letterboxd_list_details:\n  url: https://letterboxd.com/brianformo/list/vultures-101-best-movie-endings/\n  rating: 8-10",
+        "letterboxd_list_details: https://letterboxd.com/brianformo/list/vultures-101-best-movie-endings/"
+      ]
+    },
+    "letterboxd_crew": {
+      "hint": "",
+      "examples": [
+        "letterboxd_crew:\n  role: actor\n  person: marlon-brando"
+      ]
+    },
+    "letterboxd_studio": {
+      "hint": "",
+      "examples": [
+        "letterboxd_studio:\n  studio: a24\n  sort_by: release_date_newest"
+      ]
+    },
+    "letterboxd_genre": {
+      "hint": "",
+      "examples": [
+        "letterboxd_genre:\n  genre: crime\n  limit: 20"
+      ]
+    },
+    "letterboxd_similar": {
+      "hint": "",
+      "examples": [
+        "letterboxd_similar: the-godfather"
+      ]
+    },
+    "letterboxd_user_films": {
+      "hint": "every film a Letterboxd user has watched",
+      "examples": [
+        "letterboxd_user_films:\n  username: dave\n  sort_by: user_rating_highest\n  min_rating: 8\n  limit: 100",
+        "letterboxd_user_films:\n  username: dave\n  sort_by: popularity\n  incremental: false\n  limit: 500",
+        "letterboxd_user_films:\n  username: dave\n  sort_by: when_added_newest\n  year: 1990-1999",
+        "letterboxd_user_films:\n  - dave\n  - murrayfilm"
+      ]
+    },
+    "letterboxd_user_reviews": {
+      "hint": "films a Letterboxd user has reviewed",
+      "examples": [
+        "letterboxd_user_reviews:\n  username: dave\n  sort_by: user_rating_highest\n  min_rating: 9\n  limit: 50",
+        "letterboxd_user_reviews:\n  - username: dave\n    min_rating: 9\n  - username: murrayfilm\n    min_rating: 8",
+        "letterboxd_user_reviews: dave"
+      ]
+    },
+    "letterboxd_user_reviews_details": {
+      "hint": "same, pulls review text as description",
+      "examples": [
+        "letterboxd_user_reviews_details:\n  username: dave\n  note: cinematography\n  sort_by: when_rated_newest"
+      ]
+    },
+    "mdblist_list": {
+      "hint": "collection from a MDBList list URL",
+      "examples": [
+        "mdblist_list:\n  url: https://mdblist.com/lists/linaspurinis/top-watched-movies-of-the-week\n  limit: 20\n  sort_by: rtomatoes.desc",
+        "mdblist_list:\n  url: https://mdblist.com/lists/linaspurinis/top-watched-movies-of-the-week\n  sort_by: letterrating.desc\n  limit: 50",
+        "mdblist_list:\n  url: https://mdblist.com/lists/linaspurinis/top-watched-movies-of-the-week\n  sort_by: released.desc\n  limit: 30",
+        "mdblist_list:\n  url: https://mdblist.com/lists/linaspurinis/top-watched-movies-of-the-week\n  sort_by: random\n  limit: 15"
+      ]
+    },
+    "tmdb_show": {
+      "hint": "",
+      "examples": [
+        "tmdb_show:\n  - 1399\n  - 1396\n  - 4194",
+        "tmdb_show:\n  - 1396\n  - 60735",
+        "tmdb_show: 87108"
+      ]
+    },
+    "mal_airing": {
+      "hint": "top N anime from MAL's Top Airing list (max 500)",
+      "examples": [
+        "mal_airing: 20",
+        "mal_airing: 25"
+      ]
+    },
+    "mal_all": {
+      "hint": "top N anime from MAL's All-Time Top list (max 500)",
+      "examples": [
+        "mal_all: 50",
+        "mal_all: 100"
+      ]
+    },
+    "mal_favorite": {
+      "hint": "top N anime from MAL's Most Favorited list (max 500)",
+      "examples": [
+        "mal_favorite: 25"
+      ]
+    },
+    "mal_id": {
+      "hint": "anime specified by MAL ID(s)",
+      "examples": [
+        "mal_id:\n  - 1\n  - 5114",
+        "mal_id: 1, 5114"
+      ]
+    },
+    "mal_movie": {
+      "hint": "top N anime from MAL's Top Movies list (max 500)",
+      "examples": [
+        "mal_movie: 20"
+      ]
+    },
+    "mal_ova": {
+      "hint": "top N anime from MAL's Top OVA Series list (max 500)",
+      "examples": [
+        "mal_ova: 20"
+      ]
+    },
+    "mal_popular": {
+      "hint": "top N anime from MAL's Most Popular list (max 500)",
+      "examples": [
+        "mal_popular: 50",
+        "mal_popular: 100"
+      ]
+    },
+    "mal_search": {
+      "hint": "search MAL with detailed filters",
+      "examples": [
+        "mal_search:\n  sort_by: score.desc\n  limit: 30\n  type: tv\n  status: complete\n  genre: Action\n  genre.not: Hentai\n  content_rating: pg13\n  score.gte: 7.50\n  sfw: true",
+        "mal_search:\n  sort_by: score\n  limit: 50\n  type: tv\n  status: complete\n  genre: Action\n  score.gt: 7"
+      ]
+    },
+    "mal_season": {
+      "hint": "anime from a specific MAL seasonal chart",
+      "examples": [
+        "mal_season:\n  season: winter\n  year: 2024\n  sort_by: members\n  limit: 50\n  starting_only: true"
+      ]
+    },
+    "mal_special": {
+      "hint": "top N anime from MAL's Top Specials list (max 500)",
+      "examples": [
+        "mal_special: 20"
+      ]
+    },
+    "mal_suggested": {
+      "hint": "suggested anime for the authorized MAL user (max 100)",
+      "examples": [
+        "mal_suggested: 20"
+      ]
+    },
+    "mal_tv": {
+      "hint": "top N anime from MAL's Top TV Series list (max 500)",
+      "examples": [
+        "mal_tv: 30"
+      ]
+    },
+    "mal_upcoming": {
+      "hint": "top N anime from MAL's Top Upcoming list (max 500)",
+      "examples": [
+        "mal_upcoming: 20"
+      ]
+    },
+    "mal_userlist": {
+      "hint": "anime from a MAL user's personal list",
+      "examples": [
+        "mal_userlist:\n  username: \"@me\"\n  status: completed\n  sort_by: score\n  limit: 200",
+        "mal_userlist:\n  username: kometa\n  status: completed\n  sort_by: score\n  limit: 100"
+      ]
+    },
+    "stevenlu_popular": {
+      "hint": "boolean true",
+      "examples": [
+        "stevenlu_popular: true"
+      ]
+    },
+    "icheckmovies_list": {
+      "hint": "ICheckMovies list URL (string or list of strings)",
+      "examples": [
+        "icheckmovies_list:\n  - https://www.icheckmovies.com/lists/top+25+horror+films/\n  - https://www.icheckmovies.com/lists/essential+horror/",
+        "icheckmovies_list: https://www.icheckmovies.com/lists/1001+movies+you+must+see+before+you+die/"
+      ]
+    },
+    "icheckmovies_list_details": {
+      "hint": "same as icheckmovies_list but also applies",
+      "examples": [
+        "icheckmovies_list_details: https://www.icheckmovies.com/lists/criterion+collection/"
+      ]
+    },
+    "mojo_world": {
+      "hint": "Top Worldwide Box Office for a given year",
+      "examples": [
+        "mojo_world:\n  year: 2024\n  limit: 50",
+        "mojo_world:\n  year: current\n  limit: 25",
+        "mojo_world:\n  year: current-1"
+      ]
+    },
+    "mojo_all_time": {
+      "hint": "All-Time Box Office chart",
+      "examples": [
+        "mojo_all_time:\n  chart: domestic\n  content_rating_filter: pg-13\n  limit: 50",
+        "mojo_all_time:\n  chart: worldwide\n  content_rating_filter: r\n  limit: 50",
+        "mojo_all_time:\n  chart: domestic\n  limit: 100",
+        "mojo_all_time:\n  chart: worldwide\n  limit: 100"
+      ]
+    },
+    "mojo_domestic": {
+      "hint": "Domestic Box Office for specific time ranges",
+      "examples": [
+        "mojo_domestic:\n  range: weekend\n  year: current\n  range_data: current\n  limit: 10",
+        "mojo_domestic:\n  range: monthly\n  year: current\n  range_data: current\n  limit: 20",
+        "mojo_domestic:\n  range: season\n  year: 2023\n  range_data: summer\n  limit: 25",
+        "mojo_domestic:\n  range: holiday\n  year: 2023\n  range_data: thanksgiving_5\n  limit: 10"
+      ]
+    },
+    "mojo_international": {
+      "hint": "international box office (weekend/monthly/quarterly/yearly)",
+      "examples": [
+        "mojo_international:\n  range: weekend\n  year: 2024\n  range_data: 15\n  limit: 25",
+        "mojo_international:\n  range: quarterly\n  year: 2023\n  range_data: q4\n  limit: 30"
+      ]
+    },
+    "mojo_record": {
+      "hint": "named record charts (opening weekends, per-theater averages, etc.)",
+      "examples": [
+        "mojo_record:\n  chart: top_opening_weekend\n  limit: 50",
+        "mojo_record:\n  chart: top_opening_weekend_theater_avg_wide\n  limit: 25",
+        "mojo_record:\n  chart: summer\n  limit: 30"
+      ]
+    },
+    "mojo_never": {
+      "hint": "top-grossing films that never cracked Top 1/5/10",
+      "examples": [
+        "mojo_never:\n  never: \"1\"\n  chart: domestic\n  limit: 50",
+        "mojo_never:\n  never: \"10\"\n  chart: worldwide\n  limit: 25"
+      ]
+    },
+    "simkl_trending": {
+      "hint": "trending titles from Simkl (integer or object)",
+      "examples": [
+        "simkl_trending:\n  period: week\n  limit: 50",
+        "simkl_trending:\n  period: month\n  limit: 100",
+        "simkl_trending: 20"
+      ]
+    },
+    "simkl_dvd": {
+      "hint": "recent DVD releases from Simkl (integer or object)",
+      "examples": [
+        "simkl_dvd:\n  limit: 50",
+        "simkl_dvd: 30"
+      ]
+    },
+    "text_file": {
+      "hint": "plain-text file with one ID per line (string or list)",
+      "examples": [
+        "text_file:\n  - config/lists/sci_fi.txt\n  - config/lists/classics.txt",
+        "text_file: config/lists/my_movies.txt"
+      ]
+    },
+    "plex_all": {
+      "hint": "every item in the library; useful with filters",
+      "examples": [
+        "plex_all: true"
+      ]
+    },
+    "plex_search": {
+      "hint": "filter-block builder (all/any + sort_by + limit)",
+      "examples": [
+        "plex_search:\n  any:\n    genre:\n      - Action\n      - Comedy\n  all:\n    year.gte: 2019\n    audience_rating.gte: 6.5\n  sort_by:\n    - year.desc\n    - audience_rating.desc\n  limit: 100",
+        "plex_search:\n  all:\n    genre: Action\n    year.gte: 2018\n    audience_rating.gte: 7.0\n    unplayed: true\n  sort_by: audience_rating.desc\n  limit: 50",
+        "plex_search:\n  all:\n    genre: Drama\n    unplayed: true\n    added.gte: 30\n  sort_by: added.desc\n  limit: 75",
+        "plex_search:\n  all:\n    genre: Action\n    year.gte: 2010\n  sort_by: critic_rating.desc\n  limit: 50"
+      ]
+    },
+    "tmdb_popular": {
+      "hint": "",
+      "examples": [
+        "tmdb_popular: 100",
+        "tmdb_popular: 500",
+        "tmdb_popular: 50"
+      ]
+    },
+    "tmdb_trending_weekly": {
+      "hint": "",
+      "examples": [
+        "tmdb_trending_weekly: 50",
+        "tmdb_trending_weekly: 100"
+      ]
+    },
+    "trakt_list": {
+      "hint": "one or more Trakt list URLs",
+      "examples": [
+        "trakt_list:\n  - https://trakt.tv/users/movistapp/lists/best-of-2024\n  - https://trakt.tv/users/cinephile/lists/criterion-essentials",
+        "trakt_list: https://trakt.tv/users/garycrawfordgc/lists/letterboxd-top-250",
+        "trakt_list: https://trakt.tv/users/movistapp/lists/best-of-2024",
+        "trakt_list: https://trakt.tv/users/cinephile/lists/new-wave-cinema"
+      ]
+    },
+    "tautulli_popular": {
+      "hint": "items most-watched by users over a rolling window",
+      "examples": [
+        "tautulli_popular:\n  list_days: 7\n  list_size: 25\n  list_minimum: 1",
+        "tautulli_popular:\n  list_days: 30\n  list_size: 20\n  list_minimum: 2",
+        "tautulli_popular:\n  list_days: 7\n  list_size: 10\n  list_minimum: 1",
+        "tautulli_popular:\n  list_days: 90\n  list_size: 25\n  list_minimum: 3"
+      ]
+    },
+    "tautulli_watched": {
+      "hint": "items most-completed by users over a rolling window",
+      "examples": [
+        "tautulli_watched:\n  list_days: 30\n  list_size: 20\n  list_minimum: 3",
+        "tautulli_watched:\n  list_days: 30\n  list_size: 20\n  list_minimum: 5",
+        "tautulli_watched:\n  list_days: 30\n  list_size: 20\n  list_minimum: 2",
+        "tautulli_watched:\n  list_days: 7\n  list_size: 10\n  list_minimum: 1"
+      ]
+    },
+    "tmdb_discover": {
+      "hint": "",
+      "examples": [
+        "tmdb_discover:\n  limit: 100\n  sort_by: vote_average.desc\n  region: US\n  certification_country: US\n  certification.gte: PG\n  certification.lte: R\n  include_adult: false\n  include_video: false\n  primary_release_year: 2023\n  primary_release_date.gte: 01/01/2023\n  primary_release_date.lte: 12/31/2023\n  release_date.gte: 01/01/2023\n  release_date.lte: 12/31/2023\n  with_release_type: \"3|4\"\n  year: 2023\n  vote_count.gte: 100\n  vote_count.lte: 100000\n  vote_average.gte: 6.0\n  vote_average.lte: 10.0\n  with_cast: \"287,488\"\n  with_crew: \"138\"\n  with_people: \"287|488\"\n  with_companies: \"420\"\n  without_companies: \"7505\"\n  with_genres: \"28|12\"\n  without_genres: \"27\"\n  with_keywords: \"180547\"\n  without_keywords: \"9663\"\n  with_runtime.gte: 80\n  with_runtime.lte: 240\n  with_origin_country: US\n  with_original_language: en\n  watch_region: US\n  with_watch_providers: \"337|8\"\n  without_watch_providers: \"283\"\n  with_watch_monetization_types: flatrate\n  with_title_translation: en-US",
+        "tmdb_discover:\n  limit: 50\n  sort_by: vote_average.desc\n  first_air_date_year: 2022\n  first_air_date.gte: 01/01/2020\n  first_air_date.lte: 12/31/2023\n  air_date.gte: 01/01/2022\n  air_date.lte: 12/31/2023\n  include_adult: false\n  include_null_first_air_dates: false\n  timezone: America/New_York\n  vote_count.gte: 50\n  vote_count.lte: 50000\n  vote_average.gte: 7.0\n  vote_average.lte: 10.0\n  with_networks: \"213\"\n  with_companies: \"1081\"\n  without_companies: \"7505\"\n  with_genres: \"18\"\n  without_genres: \"10767\"\n  with_keywords: \"6075\"\n  without_keywords: \"159851\"\n  with_runtime.gte: 20\n  with_runtime.lte: 90\n  with_original_language: en\n  with_name_translation: en-US\n  screened_theatrically: false\n  watch_region: US\n  with_watch_providers: \"337\"\n  without_watch_providers: \"8\"\n  with_watch_monetization_types: flatrate\n  with_status: 0\n  with_type: 4",
+        "tmdb_discover:\n  with_genres: 28\n  sort_by: popularity.desc\n  vote_average.gte: 7.0\n  with_original_language: en",
+        "tmdb_discover:\n  with_genres: 99\n  sort_by: popularity.desc\n  limit: 200"
+      ]
+    },
+    "radarr_all": {
+      "hint": "boolean true",
+      "examples": [
+        "radarr_all: true"
+      ]
+    },
+    "sonarr_all": {
+      "hint": "boolean true",
+      "examples": [
+        "sonarr_all: true"
+      ]
+    },
+    "tvdb_show": {
+      "hint": "TVDb series ID (integer) or series slug URL",
+      "examples": [
+        "tvdb_show:\n  - 81189\n  - 153021\n  - 273181",
+        "tvdb_show:\n  - 81189\n  - 121361",
+        "tvdb_show:\n  - 81189\n  - 305074",
+        "tvdb_show:\n  - 153021\n  - 273181"
+      ]
+    },
+    "trakt_chart": {
+      "hint": "trending, all filter params exercised",
+      "examples": [
+        "trakt_chart:\n  chart: trending\n  limit: 40\n  time_period: weekly\n  query: action\n  years: 2015-2024\n  genres: action,thriller\n  languages: en,fr\n  countries: us,gb\n  certifications: pg-13,r\n  runtimes: 80-180\n  ratings: 60-100\n  votes: 500-500000\n  tmdb_ratings: 6.0-10.0\n  tmdb_votes: 1000-500000\n  imdb_ratings: 6.5-10.0\n  imdb_votes: 5000-3000000\n  rt_meters: 60-100\n  rt_user_meters: 65-100\n  metascores: 55-100\n  studio_ids: 33,1632",
+        "trakt_chart:\n  chart: collected\n  limit: 30\n  time_period: all\n  years: 2000-2023\n  languages: en\n  tmdb_ratings: 7.0-10.0\n  votes: 1000-1000000",
+        "trakt_chart:\n  chart: popular\n  limit: 50\n  time_period: monthly\n  genres: drama,comedy\n  countries: us\n  certifications: r,pg-13",
+        "trakt_chart:\n  chart: recommended\n  limit: 20\n  time_period: daily\n  ratings: 70-100\n  imdb_ratings: 7.0-10.0"
+      ]
+    },
+    "plex_watchlist": {
+      "hint": "items from the Plex watchlist",
+      "examples": [
+        "plex_watchlist: added.desc",
+        "plex_watchlist: title.asc",
+        "plex_watchlist: critic_rating.desc"
+      ]
+    },
+    "tmdb_movie": {
+      "hint": "",
+      "examples": [
+        "tmdb_movie:\n  - 27205\n  - 550\n  - 680",
+        "tmdb_movie:\n  - 278\n  - 630\n  - 27205",
+        "tmdb_movie: 278",
+        "tmdb_movie: 287"
+      ]
+    },
+    "tmdb_list": {
+      "hint": "",
+      "examples": [
+        "tmdb_list:\n  - 10\n  - 8315756",
+        "tmdb_list: 8411768",
+        "tmdb_list: 10"
+      ]
+    },
+    "tmdb_top_rated": {
+      "hint": "",
+      "examples": [
+        "tmdb_top_rated: 100",
+        "tmdb_top_rated: 50"
+      ]
+    },
+    "tmdb_now_playing": {
+      "hint": "",
+      "examples": [
+        "tmdb_now_playing: 20",
+        "tmdb_now_playing: 30"
+      ]
+    },
+    "tmdb_upcoming": {
+      "hint": "",
+      "examples": [
+        "tmdb_upcoming: 20",
+        "tmdb_upcoming: 30"
+      ]
+    },
+    "tmdb_trending_daily": {
+      "hint": "",
+      "examples": [
+        "tmdb_trending_daily: 30"
+      ]
+    },
+    "tvdb_list": {
+      "hint": "TVDb list URL (string or list of strings)",
+      "examples": [
+        "tvdb_list:\n  - https://www.thetvdb.com/lists/top-action-series\n  - https://www.thetvdb.com/lists/top-adventure-series",
+        "tvdb_list: https://www.thetvdb.com/lists/top-series",
+        "tvdb_list: https://www.thetvdb.com/lists/top-science-fiction",
+        "tvdb_list: https://www.thetvdb.com/lists/epic-fantasy-series"
+      ]
+    },
+    "tvdb_movie": {
+      "hint": "TVDb movie ID (integer) or movie slug URL",
+      "examples": [
+        "tvdb_movie:\n  - 7473\n  - 12394\n  - 3023",
+        "tvdb_movie: 15991",
+        "tvdb_movie: https://www.thetvdb.com/movies/star-wars-episode-iv-a-new-hope",
+        "tvdb_movie: 7473"
+      ]
+    },
+    "trakt_userlist": {
+      "hint": "watchlist",
+      "examples": [
+        "trakt_userlist:\n  - userlist: watchlist\n    user: cinephile\n    sort_by: added\n  - userlist: favorites\n    user: movistapp\n    sort_by: rank",
+        "trakt_userlist:\n  userlist: watchlist\n  user: me\n  sort_by: rank",
+        "trakt_userlist:\n  userlist: watchlist\n  user: me\n  sort_by: added",
+        "trakt_userlist:\n  userlist: favorites\n  user: movistapp\n  sort_by: rank"
+      ]
+    },
+    "trakt_recommendations": {
+      "hint": "simple integer builder (max 100)",
+      "examples": [
+        "trakt_recommendations: 40",
+        "trakt_recommendations: 25"
+      ]
+    },
+    "trakt_boxoffice": {
+      "hint": "boolean builder (always returns 10 items)",
+      "examples": [
+        "trakt_boxoffice: true"
+      ]
+    },
+    "plex_collectionless": {
+      "hint": "items that belong to no collection",
+      "examples": [
+        "plex_collectionless:\n  exclude_prefix:\n    - \"!\"\n    - \"+\"\n    - \"~\"\n    - \"DC\"\n    - \"Marvel\"\n  exclude:\n    - Marvel Cinematic Universe\n    - DC Extended Universe\n    - Star Wars Saga"
+      ]
+    },
+    "plex_pilots": {
+      "hint": "first episode of every show (requires builder_level: episode)",
+      "examples": [
+        "plex_pilots: true"
+      ]
+    },
+    "radarr_taglist": {
+      "hint": "string (comma-separated tags)",
+      "examples": [
+        "radarr_taglist:\n  - favorites\n  - keep-forever",
+        "radarr_taglist: 4k",
+        "radarr_taglist: action, must-watch",
+        "radarr_taglist:"
+      ]
+    },
+    "sonarr_taglist": {
+      "hint": "string (comma-separated tags)",
+      "examples": [
+        "sonarr_taglist:\n  - favorites\n  - keep-forever",
+        "sonarr_taglist: 4k",
+        "sonarr_taglist: animation, family",
+        "sonarr_taglist:"
+      ]
+    },
+    "tmdb_airing_today": {
+      "hint": "",
+      "examples": [
+        "tmdb_airing_today: 20"
+      ]
+    },
+    "tmdb_on_the_air": {
+      "hint": "",
+      "examples": [
+        "tmdb_on_the_air: 30"
+      ]
+    },
+    "tmdb_list_details": {
+      "hint": "",
+      "examples": [
+        "tmdb_list_details:\n  - 10\n  - 8315756"
+      ]
+    },
+    "tmdb_movie_details": {
+      "hint": "",
+      "examples": [
+        "tmdb_movie_details:\n  - 278\n  - 27205"
+      ]
+    },
+    "tmdb_show_details": {
+      "hint": "",
+      "examples": [
+        "tmdb_show_details:\n  - 1399\n  - 1396"
+      ]
+    },
+    "tmdb_collection_details": {
+      "hint": "",
+      "examples": [
+        "tmdb_collection_details:\n  - 119"
+      ]
+    },
+    "tmdb_company": {
+      "hint": "",
+      "examples": [
+        "tmdb_company: 10342"
+      ]
+    },
+    "tmdb_network": {
+      "hint": "",
+      "examples": [
+        "tmdb_network:\n  - 213\n  - 16"
+      ]
+    },
+    "tmdb_keyword": {
+      "hint": "",
+      "examples": [
+        "tmdb_keyword: 180547"
+      ]
+    },
+    "tmdb_actor": {
+      "hint": "",
+      "examples": [
+        "tmdb_actor: 287"
+      ]
+    },
+    "tmdb_actor_details": {
+      "hint": "",
+      "examples": [
+        "tmdb_actor_details:\n  - 2157\n  - 74568"
+      ]
+    },
+    "tmdb_director": {
+      "hint": "",
+      "examples": [
+        "tmdb_director: 488"
+      ]
+    },
+    "tmdb_director_details": {
+      "hint": "",
+      "examples": [
+        "tmdb_director_details:\n  - 19271\n  - 19272"
+      ]
+    },
+    "tmdb_producer": {
+      "hint": "",
+      "examples": [
+        "tmdb_producer: 19292"
+      ]
+    },
+    "tmdb_producer_details": {
+      "hint": "",
+      "examples": [
+        "tmdb_producer_details:\n  - 9339\n  - 9340"
+      ]
+    },
+    "tmdb_writer": {
+      "hint": "",
+      "examples": [
+        "tmdb_writer: 1243"
+      ]
+    },
+    "tmdb_writer_details": {
+      "hint": "",
+      "examples": [
+        "tmdb_writer_details:\n  - 1383612\n  - 1317730"
+      ]
+    },
+    "tmdb_crew": {
+      "hint": "",
+      "examples": [
+        "tmdb_crew: 138"
+      ]
+    },
+    "tmdb_crew_details": {
+      "hint": "",
+      "examples": [
+        "tmdb_crew_details:\n  - 28846\n  - 137905\n  - 63764"
+      ]
+    },
+    "trakt_trending": {
+      "hint": "simple integer builder",
+      "examples": [
+        "trakt_trending: 20"
+      ]
+    },
+    "trakt_popular": {
+      "hint": "simple integer builder",
+      "examples": [
+        "trakt_popular: 30"
+      ]
+    },
+    "trakt_list_details": {
+      "hint": "same as trakt_list but also pulls the list description",
+      "examples": [
+        "trakt_list_details: https://trakt.tv/users/movistapp/lists/directors-cut-classics"
+      ]
+    },
+    "tvdb_list_details": {
+      "hint": "same as tvdb_list but also pulls the list's",
+      "examples": [
+        "tvdb_list_details: https://www.thetvdb.com/lists/epic-fantasy-series"
+      ]
+    },
+    "tvdb_show_details": {
+      "hint": "same as tvdb_show but also sets summary, poster,",
+      "examples": [
+        "tvdb_show_details: 305074"
+      ]
+    },
+    "tvdb_movie_details": {
+      "hint": "same as tvdb_movie but also sets summary, poster,",
+      "examples": [
+        "tvdb_movie_details: https://www.thetvdb.com/movies/dune-part-two"
+      ]
+    }
+  },
   "builders_missing_from_schema": [
     "mal_genre",
     "mal_studio",

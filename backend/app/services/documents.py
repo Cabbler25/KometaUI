@@ -203,3 +203,46 @@ def set_value(file_text: str, path: list[str | int], value: Any) -> str:
 
 def remove_value(file_text: str, path: list[str | int]) -> str:
     return delete_node(file_text, list(path))
+
+
+def merge_mapping(file_text: str, path: list[str | int], values: dict[str, Any]) -> str:
+    """Make the mapping at ``path`` match ``values``, one surgical edit per key.
+
+    Used when a form is saved. Writing the whole mapping back in one go would re-emit
+    every line of it; instead only genuinely changed keys are touched, so a form with
+    forty fields and one edit produces a one-line diff.
+
+    Keys absent from ``values`` are removed -- the form is the complete intended state of
+    that mapping, so clearing a field must delete it rather than leave a stale value.
+    """
+    data = loads(file_text)
+
+    node: Any = data
+    for step in path:
+        if isinstance(node, dict) and step in node:
+            node = node[step]
+        elif isinstance(node, list) and isinstance(step, int) and 0 <= step < len(node):
+            node = node[step]
+        else:
+            node = None
+            break
+
+    if node is None:
+        # The mapping does not exist yet; create it whole.
+        return set_value(file_text, path, dict(values)) if values else file_text
+    if not isinstance(node, dict):
+        raise EditError(f"{'.'.join(str(p) for p in path)} is not a mapping")
+
+    text = file_text
+
+    # Removals first: deleting later would invalidate positions computed now.
+    for key in [k for k in node if k not in values]:
+        text = delete_node(text, [*path, key])
+
+    for key, value in values.items():
+        current = node.get(key) if key in node else None
+        if key in node and current == value:
+            continue
+        text = set_value(text, [*path, key], value)
+
+    return text

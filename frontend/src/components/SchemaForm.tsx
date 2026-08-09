@@ -54,7 +54,10 @@ export function SchemaForm({ fields, values, onChange, filterable = true, emptyH
   const setCount = fields.filter((f) => f.name in values).length
 
   return (
-    <div className="flex min-h-0 flex-col">
+    // `flex-1` and `min-h-0` together are what let the list below scroll: without them
+    // this box grows to fit its content and the overflow is simply clipped by whatever
+    // contains it, which looked like "search results I cannot reach".
+    <div className="flex min-h-0 flex-1 flex-col">
       {filterable && (
         <div className="flex shrink-0 items-center gap-2 border-b border-ink-800 px-3 py-2">
           <input

@@ -109,6 +109,11 @@ export interface DefaultsGroup {
   shared_template_variable_ref: string | null
 }
 
+export interface BuilderDocs {
+  hint: string
+  examples: string[]
+}
+
 export interface Catalog {
   kometa_version: string
   services: Record<string, { label: string; builders: string[] }>
@@ -117,6 +122,7 @@ export interface Catalog {
   defaults: Record<'collections' | 'overlays' | 'playlists', DefaultsGroup>
   collection_property_descriptions: Record<string, string>
   builders_missing_from_schema: string[]
+  builder_examples: Record<string, BuilderDocs>
 }
 
 export interface EditResult {
@@ -147,6 +153,41 @@ export interface PlexLibrary {
   /** The value Kometa expects for `library_type`. */
   libraryType: string
   key: string
+}
+
+/**
+ * Server-held connection state. Note there is no token field: the backend keeps it and
+ * only reports whether one is held, so it never reaches the browser.
+ */
+export interface ConnectionState {
+  url: string | null
+  hasToken: boolean
+  tokenFromConfig: boolean
+  hasApikey: boolean
+  serverName: string | null
+  serverVersion: string | null
+  libraries: PlexLibrary[]
+  plexError: string | null
+  tmdbOk: boolean | null
+  tmdbError: string | null
+}
+
+export interface PreviewItem {
+  title: string
+  year: number | null
+  type: string | null
+  ratingKey: string
+  thumb: string | null
+}
+
+export interface PreviewResult {
+  total: number
+  items: PreviewItem[]
+  /** Conditions that were translated and applied. */
+  applied: string[]
+  /** Conditions that could not be translated — the count is incomplete when non-empty. */
+  skipped: { condition: string; reason: string }[]
+  truncated: boolean
 }
 
 export class ApiError extends Error {
@@ -243,9 +284,16 @@ export const api = {
     ),
 
   builderForm: (builder: string) =>
-    request<{ builder: string; service: string | null; inSchema: boolean; field: FormField }>(
-      `/api/forms/builder/${encodeURIComponent(builder)}`,
-    ),
+    request<{
+      builder: string
+      service: string | null
+      inSchema: boolean
+      field: FormField
+      /** One-line summary from Kometa's example galleries. */
+      hint: string
+      /** Worked YAML snippets, fullest first. */
+      examples: string[]
+    }>(`/api/forms/builder/${encodeURIComponent(builder)}`),
 
   // -- structured edits ------------------------------------------------------------
 
@@ -291,8 +339,13 @@ export const api = {
       }),
     }),
 
-  addCollection: (path: string, name: string, definition: Record<string, unknown>) =>
-    request<EditResult>('/api/collections/add', {
+  addDefinition: (
+    kind: 'collection' | 'overlay',
+    path: string,
+    name: string,
+    definition: Record<string, unknown>,
+  ) =>
+    request<EditResult>(kind === 'overlay' ? '/api/overlays/add' : '/api/collections/add', {
       method: 'POST',
       body: JSON.stringify({ path, name, definition }),
     }),
@@ -303,34 +356,79 @@ export const api = {
       body: JSON.stringify({ path, pointer, value }),
     }),
 
+  readValue: (path: string, pointer: string) =>
+    request<{ exists: boolean; value: unknown }>(
+      `/api/documents/value?path=${encodeURIComponent(path)}&pointer=${encodeURIComponent(pointer)}`,
+    ),
+
+  /** Reconcile a mapping to `values`, one surgical edit per changed key. */
+  mergeMapping: (path: string, pointer: (string | number)[], values: Record<string, unknown>) =>
+    request<EditResult>('/api/documents/merge', {
+      method: 'POST',
+      body: JSON.stringify({ path, pointer, values }),
+    }),
+
   // -- connections (read-only) -------------------------------------------------------
 
-  plexPin: () => request<PlexPin>('/api/plex/pin', { method: 'POST' }),
+  /** Current connection state. Pass the config to seed from an already-saved token. */
+  connections: (config?: string | null) =>
+    request<ConnectionState>(
+      `/api/connections${config ? `?config=${encodeURIComponent(config)}` : ''}`,
+    ),
 
-  plexPinStatus: (id: number) =>
-    request<{ linked: boolean; token: string | null }>(`/api/plex/pin/${id}`),
-
-  plexServers: (token: string) =>
-    request<{ servers: PlexServer[] }>('/api/plex/servers', {
+  setPlexToken: (token: string) =>
+    request<ConnectionState>('/api/connections/token', {
       method: 'POST',
       body: JSON.stringify({ token }),
     }),
 
-  plexTest: (url: string, token: string) =>
-    request<{ name: string; version: string; platform: string }>('/api/plex/test', {
-      method: 'POST',
-      body: JSON.stringify({ url, token }),
-    }),
+  resetConnections: () => request<ConnectionState>('/api/connections/reset', { method: 'POST' }),
 
-  plexLibraries: (url: string, token: string) =>
-    request<{ libraries: PlexLibrary[] }>('/api/plex/libraries', {
+  plexPin: () => request<PlexPin>('/api/plex/pin', { method: 'POST' }),
+
+  /** The token is stored server-side on success and never returned here. */
+  plexPinStatus: (id: number) =>
+    request<{ linked: boolean; servers?: PlexServer[]; connection: ConnectionState }>(
+      `/api/plex/pin/${id}`,
+    ),
+
+  plexServers: () => request<{ servers: PlexServer[] }>('/api/plex/servers', { method: 'POST' }),
+
+  /** Verifies the address and discovers libraries in one call. */
+  plexTest: (url?: string) =>
+    request<ConnectionState>('/api/plex/test', {
       method: 'POST',
-      body: JSON.stringify({ url, token }),
+      body: JSON.stringify({ url: url ?? null }),
     }),
 
   tmdbTest: (apikey: string) =>
-    request<{ ok: boolean; imageBase: string | null }>('/api/tmdb/test', {
+    request<ConnectionState>('/api/tmdb/test', {
       method: 'POST',
       body: JSON.stringify({ apikey }),
+    }),
+
+  /** Parse a YAML snippet server-side and return the value under `key`. */
+  parseSnippet: (text: string, key?: string) =>
+    request<{ value: unknown }>('/api/yaml/parse', {
+      method: 'POST',
+      body: JSON.stringify({ text, key: key ?? null }),
+    }),
+
+  preview: (library: string, definition: Record<string, unknown>) =>
+    request<PreviewResult>('/api/preview', {
+      method: 'POST',
+      body: JSON.stringify({ library, definition }),
+    }),
+
+  previewSupported: (definition: Record<string, unknown>) =>
+    request<{ previewable: boolean; blocking: string[] }>('/api/preview/supported', {
+      method: 'POST',
+      body: JSON.stringify({ library: '', definition }),
+    }),
+
+  saveConnections: (config: string) =>
+    request<EditResult & { written: string[] }>('/api/connections/save', {
+      method: 'POST',
+      body: JSON.stringify({ config }),
     }),
 }

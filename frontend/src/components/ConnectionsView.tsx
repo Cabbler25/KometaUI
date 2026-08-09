@@ -2,19 +2,22 @@
  * Set up the connections Kometa needs, and confirm they work before it runs.
  *
  * Two things this fixes. Getting a Plex token normally means digging through an item's
- * XML for `X-Plex-Token`; here you approve a short code on plex.tv instead. And library
- * names in config.yml must match the server character for character — a typo produces a
- * silent no-op rather than an error — so the real names are read off the server and
- * written for you.
+ * XML for `X-Plex-Token`; here you approve access on plex.tv instead. And library names in
+ * config.yml must match the server character for character — a typo is a silent no-op in
+ * Kometa rather than an error — so the real names are read off the server.
  *
- * Strictly read-only against Plex: this lists libraries and versions, and only ever
- * writes to your own config file.
+ * Connection state lives on the backend, not in this component. That is what lets a page
+ * reload pick up where you left off, and it means the token itself never reaches the
+ * browser: every Plex call is made server-side with the token it holds.
+ *
+ * Strictly read-only against Plex. Only your own config files are written.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ApiError,
   api,
+  type ConnectionState,
   type PlexLibrary,
   type PlexPin,
   type PlexServer,
@@ -23,43 +26,34 @@ import {
 interface Props {
   config: string | null
   canWrite: boolean
-  onLibrariesDiscovered: (libraries: PlexLibrary[]) => void
+  connection: ConnectionState | null
+  onConnectionChange: (state: ConnectionState) => void
   onConfigChanged: () => void
   notify: (text: string, tone?: 'ok' | 'bad') => void
 }
 
-type Health = { state: 'idle' | 'checking' | 'ok' | 'bad'; message?: string }
-
 export function ConnectionsView({
   config,
   canWrite,
-  onLibrariesDiscovered,
+  connection,
+  onConnectionChange,
   onConfigChanged,
   notify,
 }: Props) {
-  const [url, setUrl] = useState('http://localhost:32400')
-  const [token, setToken] = useState('')
+  const [url, setUrl] = useState('')
   const [apikey, setApikey] = useState('')
-  const [plexHealth, setPlexHealth] = useState<Health>({ state: 'idle' })
-  const [tmdbHealth, setTmdbHealth] = useState<Health>({ state: 'idle' })
+  const [manualToken, setManualToken] = useState('')
   const [pin, setPin] = useState<PlexPin | null>(null)
   const [servers, setServers] = useState<PlexServer[]>([])
-  const [libraries, setLibraries] = useState<PlexLibrary[]>([])
+  const [testing, setTesting] = useState(false)
+  const [testingTmdb, setTestingTmdb] = useState(false)
   const [saving, setSaving] = useState(false)
   const pollTimer = useRef<number | null>(null)
 
-  // Prefill from the open config so this reads as "review and confirm", not "start over".
+  // Adopt whatever the server already knows, including after a reload.
   useEffect(() => {
-    if (!config) return
-    api
-      .readFile(config)
-      .then(({ text }) => {
-        setUrl(matchScalar(text, 'url') ?? 'http://localhost:32400')
-        setToken(matchScalar(text, 'token') ?? '')
-        setApikey(matchScalar(text, 'apikey') ?? '')
-      })
-      .catch(() => undefined)
-  }, [config])
+    if (connection?.url && !url) setUrl(connection.url)
+  }, [connection, url])
 
   const stopPolling = useCallback(() => {
     if (pollTimer.current !== null) {
@@ -77,19 +71,17 @@ export function ConnectionsView({
       setPin(started)
       window.open(started.authUrl, '_blank', 'noopener')
 
-      // plex.tv has no callback to a local app, so poll until the code is approved.
+      // plex.tv cannot call back to a local app, so poll until the code is approved.
       pollTimer.current = window.setInterval(async () => {
         try {
-          const { linked, token: authToken } = await api.plexPinStatus(started.id)
-          if (!linked || !authToken) return
+          const result = await api.plexPinStatus(started.id)
+          if (!result.linked) return
           stopPolling()
           setPin(null)
-          setToken(authToken)
+          onConnectionChange(result.connection)
+          if (result.servers?.length) setServers(result.servers)
+          if (result.connection.url) setUrl(result.connection.url)
           notify('Signed in to Plex')
-          const { servers: found } = await api.plexServers(authToken)
-          setServers(found)
-          const firstLocal = found[0]?.connections[0]?.uri
-          if (firstLocal) setUrl(firstLocal)
         } catch {
           stopPolling()
           setPin(null)
@@ -100,27 +92,59 @@ export function ConnectionsView({
     }
   }
 
-  async function testPlex() {
-    setPlexHealth({ state: 'checking' })
+  async function useManualToken() {
     try {
-      const info = await api.plexTest(url, token)
-      setPlexHealth({ state: 'ok', message: `${info.name} · Plex ${info.version}` })
-      const { libraries: found } = await api.plexLibraries(url, token)
-      setLibraries(found)
-      onLibrariesDiscovered(found)
+      onConnectionChange(await api.setPlexToken(manualToken.trim()))
+      setManualToken('')
+      notify('Token saved for this session')
     } catch (e) {
-      setPlexHealth({ state: 'bad', message: e instanceof ApiError ? e.message : String(e) })
-      setLibraries([])
+      notify(e instanceof ApiError ? e.message : String(e), 'bad')
+    }
+  }
+
+  async function signOut() {
+    stopPolling()
+    setServers([])
+    setPin(null)
+    try {
+      onConnectionChange(await api.resetConnections())
+      notify('Signed out')
+    } catch (e) {
+      notify(e instanceof ApiError ? e.message : String(e), 'bad')
+    }
+  }
+
+  async function testPlex() {
+    setTesting(true)
+    try {
+      onConnectionChange(await api.plexTest(url))
+    } catch (e) {
+      // The backend records the failure on the session; refresh so it renders.
+      notify(e instanceof ApiError ? e.message : String(e), 'bad')
+      try {
+        onConnectionChange(await api.connections(config))
+      } catch {
+        /* leave the previous state visible */
+      }
+    } finally {
+      setTesting(false)
     }
   }
 
   async function testTmdb() {
-    setTmdbHealth({ state: 'checking' })
+    setTestingTmdb(true)
     try {
-      await api.tmdbTest(apikey)
-      setTmdbHealth({ state: 'ok', message: 'Key accepted' })
+      onConnectionChange(await api.tmdbTest(apikey))
+      notify('TMDb key accepted')
     } catch (e) {
-      setTmdbHealth({ state: 'bad', message: e instanceof ApiError ? e.message : String(e) })
+      notify(e instanceof ApiError ? e.message : String(e), 'bad')
+      try {
+        onConnectionChange(await api.connections(config))
+      } catch {
+        /* leave the previous state visible */
+      }
+    } finally {
+      setTestingTmdb(false)
     }
   }
 
@@ -128,12 +152,12 @@ export function ConnectionsView({
     if (!config) return
     setSaving(true)
     try {
-      // Written one value at a time so each lands as a surgical edit and the rest of the
-      // file — comments included — is untouched.
-      if (url) await api.setValue(config, ['plex', 'url'], url)
-      if (token) await api.setValue(config, ['plex', 'token'], token)
-      if (apikey) await api.setValue(config, ['tmdb', 'apikey'], apikey)
-      notify(`Saved connection settings to ${config}`)
+      const result = await api.saveConnections(config)
+      notify(
+        result.written.length
+          ? `Saved ${result.written.join(', ')} to ${config}`
+          : 'Nothing to save yet',
+      )
       onConfigChanged()
     } catch (e) {
       notify(e instanceof ApiError ? e.message : String(e), 'bad')
@@ -156,6 +180,9 @@ export function ConnectionsView({
     }
   }
 
+  const signedIn = Boolean(connection?.hasToken)
+  const libraries = connection?.libraries ?? []
+
   return (
     <div className="min-h-0 flex-1 overflow-auto">
       <div className="mx-auto max-w-3xl space-y-6 p-5">
@@ -163,31 +190,67 @@ export function ConnectionsView({
           title="Plex"
           hint="Kometa needs a server address and an admin token. KometaUI only ever reads from Plex."
         >
-          <Row label="Sign in">
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={signIn}
-                className="rounded bg-accent px-3 py-1 font-medium text-ink-950 hover:brightness-110"
-              >
-                Sign in with Plex
-              </button>
-              {pin && (
-                // A "strong" PIN is a long random string carried in the auth URL rather
-                // than something to type, so point at the tab instead of showing it.
-                <span className="text-ink-400">
-                  Approve access in the Plex tab that opened — waiting…{' '}
-                  <a
-                    href={pin.authUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-accent hover:underline"
+          <Row label="Account">
+            {signedIn ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-ok">✓ Token held</span>
+                {connection?.tokenFromConfig && (
+                  <span className="text-ink-500">(read from {config ?? 'your config'})</span>
+                )}
+                <button
+                  type="button"
+                  onClick={signOut}
+                  className="rounded border border-ink-700 px-2 py-0.5 text-ink-300 hover:bg-ink-800"
+                >
+                  Forget token
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={signIn}
+                    className="rounded bg-accent px-3 py-1 font-medium text-ink-950 hover:brightness-110"
                   >
-                    reopen
-                  </a>
-                </span>
-              )}
-            </div>
+                    Sign in with Plex
+                  </button>
+                  {pin && (
+                    // A "strong" PIN is a long random string carried in the auth URL
+                    // rather than something to type, so point at the tab instead.
+                    <span className="text-ink-400">
+                      Approve access in the Plex tab that opened — waiting…{' '}
+                      <a
+                        href={pin.authUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-accent hover:underline"
+                      >
+                        reopen
+                      </a>
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    value={manualToken}
+                    onChange={(e) => setManualToken(e.target.value)}
+                    type="password"
+                    spellCheck={false}
+                    placeholder="…or paste an existing X-Plex-Token"
+                    className={inputClass}
+                  />
+                  <button
+                    type="button"
+                    onClick={useManualToken}
+                    disabled={!manualToken.trim()}
+                    className="shrink-0 rounded border border-ink-700 px-2 py-1 text-ink-200 hover:bg-ink-800 disabled:opacity-40"
+                  >
+                    Use
+                  </button>
+                </div>
+              </div>
+            )}
           </Row>
 
           <Row label="Server URL">
@@ -201,15 +264,15 @@ export function ConnectionsView({
             {servers.length > 0 && (
               <div className="mt-1.5 flex flex-wrap gap-1">
                 {servers.flatMap((server) =>
-                  server.connections.slice(0, 3).map((connection) => (
+                  server.connections.slice(0, 3).map((c) => (
                     <button
-                      key={`${server.name}-${connection.uri}`}
+                      key={`${server.name}-${c.uri}`}
                       type="button"
-                      onClick={() => setUrl(connection.uri)}
+                      onClick={() => setUrl(c.uri)}
                       className="rounded border border-ink-700 px-1.5 py-0.5 text-[11px] text-ink-300 hover:bg-ink-800"
-                      title={`${server.name}${connection.relay ? ' (relay)' : connection.local ? ' (local)' : ''}`}
+                      title={`${server.name}${c.relay ? ' (relay)' : c.local ? ' (local)' : ''}`}
                     >
-                      {connection.uri}
+                      {c.uri}
                     </button>
                   )),
                 )}
@@ -217,36 +280,30 @@ export function ConnectionsView({
             )}
           </Row>
 
-          <Row label="Token">
-            <input
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              spellCheck={false}
-              type="password"
-              placeholder="Signed in above, or paste an existing token"
-              className={inputClass}
-            />
-          </Row>
-
           <Row label="">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={testPlex}
-                disabled={!url || !token || plexHealth.state === 'checking'}
+                disabled={!signedIn || !url || testing}
                 className="rounded border border-ink-700 px-3 py-1 text-ink-200 hover:bg-ink-800 disabled:opacity-40"
               >
-                {plexHealth.state === 'checking' ? 'Testing…' : 'Test connection'}
+                {testing ? 'Testing…' : 'Test connection'}
               </button>
-              <HealthBadge health={plexHealth} />
+              {connection?.serverName && (
+                <span className="text-ok">
+                  ✓ {connection.serverName} · Plex {connection.serverVersion}
+                </span>
+              )}
+              {connection?.plexError && <span className="text-danger">✕ {connection.plexError}</span>}
             </div>
           </Row>
         </Section>
 
         {libraries.length > 0 && (
           <Section
-            title="Libraries on this server"
-            hint="Names must match your config exactly. Add one to write it with the right library_type."
+            title={`Libraries on ${connection?.serverName ?? 'this server'}`}
+            hint="Names must match your config exactly. Adding one writes it with the right library_type."
           >
             <div className="space-y-1.5">
               {libraries.map((library) => (
@@ -279,6 +336,7 @@ export function ConnectionsView({
               onChange={(e) => setApikey(e.target.value)}
               spellCheck={false}
               type="password"
+              placeholder={connection?.hasApikey ? 'A key is already held' : ''}
               className={inputClass}
             />
           </Row>
@@ -287,12 +345,13 @@ export function ConnectionsView({
               <button
                 type="button"
                 onClick={testTmdb}
-                disabled={!apikey || tmdbHealth.state === 'checking'}
+                disabled={!apikey || testingTmdb}
                 className="rounded border border-ink-700 px-3 py-1 text-ink-200 hover:bg-ink-800 disabled:opacity-40"
               >
-                {tmdbHealth.state === 'checking' ? 'Testing…' : 'Test key'}
+                {testingTmdb ? 'Testing…' : 'Test key'}
               </button>
-              <HealthBadge health={tmdbHealth} />
+              {connection?.tmdbOk && <span className="text-ok">✓ Key accepted</span>}
+              {connection?.tmdbError && <span className="text-danger">✕ {connection.tmdbError}</span>}
             </div>
           </Row>
         </Section>
@@ -344,28 +403,4 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
       <div className="min-w-0">{children}</div>
     </div>
   )
-}
-
-function HealthBadge({ health }: { health: Health }) {
-  if (health.state === 'idle') return null
-  if (health.state === 'checking') return <span className="text-ink-500">Checking…</span>
-  return (
-    <span className={health.state === 'ok' ? 'text-ok' : 'text-danger'}>
-      {health.state === 'ok' ? '✓ ' : '✕ '}
-      {health.message}
-    </span>
-  )
-}
-
-/**
- * Pull a scalar out of raw config text for prefilling.
- *
- * Deliberately a regex rather than a parse: this runs on every config load just to
- * populate three inputs, and a malformed file should leave the fields blank rather than
- * throw. The authoritative read/write path is the backend's YAML handling.
- */
-function matchScalar(text: string, key: string): string | null {
-  const match = new RegExp(`^\\s*${key}:\\s*(.+?)\\s*$`, 'm').exec(text)
-  if (!match) return null
-  return match[1].replace(/^['"]|['"]$/g, '') || null
 }

@@ -65,7 +65,39 @@ class TestWorkspaceLifecycle:
         assert "catalog" in response.json()
 
     def test_schema_name_is_validated(self, client):
-        assert client.get("/api/schemas/../../etc/passwd").status_code in (400, 404)
+        """The route can only ever see one path segment.
+
+        Traversal written literally is collapsed by the client, and percent-encoded
+        slashes are decoded into extra segments that no longer match `/schemas/{name}` —
+        so a traversing name cannot reach this handler at all. What is reachable, and
+        therefore worth pinning, is a single segment containing dots, plus the ordinary
+        unknown-name case.
+        """
+        assert client.get("/api/schemas/..json").status_code == 400
+        assert client.get("/api/schemas/config-schema.txt").status_code == 400
+        assert client.get("/api/schemas/not-a-schema.json").status_code == 404
+        assert client.get("/api/schemas/config-schema.json").status_code == 200
+
+
+class TestStaticServing:
+    """The SPA catch-all is registered last and must not become a file-read primitive."""
+
+    def test_never_serves_a_file_outside_the_static_directory(self, client, monkeypatch, tmp_path):
+        from app import main
+
+        if not main.STATIC_DIR.is_dir():
+            pytest.skip("no built frontend to serve")
+
+        # Anything that is not a real file under static/ falls through to index.html.
+        # What matters is that no backend source or system file is ever returned.
+        for path in ("/../../backend/app/config.py", "/etc/passwd", "/app/config.py"):
+            response = client.get(path)
+            assert "class Settings" not in response.text
+            assert "root:x:" not in response.text
+
+    def test_api_routes_are_not_shadowed_by_the_catch_all(self, client):
+        assert client.get("/api/status").status_code == 200
+        assert client.get("/health").json() == {"status": "ok"}
 
 
 class TestDefaultsFlow:

@@ -13,8 +13,9 @@ from ruamel.yaml.error import YAMLError
 
 from .. import state
 from ..config import settings
-from ..services import documents, plex_client, schema_form, validation
+from ..services import connections, documents, plex_client, preview, schema_form, validation
 from ..services.workspace import ReadOnlyError, Workspace, WorkspaceError
+from ..services.yaml_doc import loads
 from ..services.yaml_edit import EditError
 
 router = APIRouter(prefix="/api")
@@ -253,11 +254,17 @@ def builder_form(builder: str) -> dict[str, Any]:
             description="Kometa accepts this builder but its JSON schema does not describe it.",
         )
     )
+    # Worked examples from Kometa's own galleries. A generated form can say `plex_search`
+    # is an object; only an example shows what belongs inside it.
+    documentation = catalog.get("builder_examples", {}).get(builder, {})
+
     return {
         "builder": builder,
         "service": service,
         "inSchema": node is not None,
         "field": schema_form.asdict(field),
+        "hint": documentation.get("hint", ""),
+        "examples": documentation.get("examples", []),
     }
 
 
@@ -436,14 +443,57 @@ def remove_value(request: SetValueRequest) -> dict[str, Any]:
     return _apply(request.path, lambda text: documents.remove_value(text, request.pointer))
 
 
+class MergeRequest(BaseModel):
+    path: str
+    pointer: list[Any]
+    values: dict[str, Any] = Field(default_factory=dict)
+
+
+@router.post("/documents/merge")
+def merge_mapping(request: MergeRequest) -> dict[str, Any]:
+    """Save a form: reconcile a mapping to the submitted values, key by key."""
+    return _apply(
+        request.path,
+        lambda text: documents.merge_mapping(text, request.pointer, request.values),
+    )
+
+
+@router.get("/documents/value")
+def read_value(path: str, pointer: str = "") -> dict[str, Any]:
+    """Read the mapping a form should be populated from.
+
+    ``pointer`` is a dotted path; an empty one reads the document root.
+    """
+    workspace = _workspace()
+    try:
+        data = loads(workspace.read(path))
+    except WorkspaceError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except YAMLError as exc:
+        raise HTTPException(status_code=400, detail=f"Could not parse {path}: {exc}") from exc
+
+    node: Any = data
+    for step in [p for p in pointer.split(".") if p]:
+        if isinstance(node, dict) and step in node:
+            node = node[step]
+        else:
+            return {"path": path, "pointer": pointer, "exists": False, "value": None}
+
+    return {"path": path, "pointer": pointer, "exists": True, "value": _plain(node)}
+
+
+def _plain(value: Any) -> Any:
+    """Strip ruamel's comment-carrying wrappers so the value serialises as plain JSON."""
+    if isinstance(value, dict):
+        return {str(k): _plain(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_plain(v) for v in value]
+    return value
+
+
 # ----------------------------------------------------------------------------------
 # Connections (read-only)
 # ----------------------------------------------------------------------------------
-
-
-class ConnectionRequest(BaseModel):
-    url: str
-    token: str
 
 
 class TmdbRequest(BaseModel):
@@ -454,9 +504,50 @@ class TokenRequest(BaseModel):
     token: str
 
 
+class UrlRequest(BaseModel):
+    """Only the address; the token comes from the server-side session."""
+
+    url: str | None = None
+
+
+class SaveConnectionsRequest(BaseModel):
+    config: str
+
+
+@router.get("/connections")
+def get_connections(config: str | None = None) -> dict[str, Any]:
+    """Current connection state, restored across page reloads.
+
+    Seeded from the open config when asked, so a user who already has a working token in
+    ``config.yml`` is not made to sign in again.
+    """
+    session = connections.current()
+    if config:
+        workspace = state.current_or_none()
+        if workspace is not None:
+            try:
+                connections.seed_from_config(workspace.read(config))
+            except (WorkspaceError, UnicodeDecodeError):
+                pass
+    return session.public()
+
+
+@router.post("/connections/token")
+def set_connection_token(request: TokenRequest) -> dict[str, Any]:
+    """Accept a manually pasted token."""
+    connections.set_token(request.token)
+    return connections.current().public()
+
+
+@router.post("/connections/reset")
+def reset_connections() -> dict[str, Any]:
+    """Forget the held token and everything derived from it."""
+    return connections.reset().public()
+
+
 @router.post("/plex/pin")
 def plex_pin() -> dict[str, Any]:
-    """Begin the plex.tv sign-in flow and return the code to approve."""
+    """Begin the plex.tv sign-in flow."""
     try:
         pin = plex_client.start_pin()
     except plex_client.PlexError as exc:
@@ -466,50 +557,177 @@ def plex_pin() -> dict[str, Any]:
 
 @router.get("/plex/pin/{pin_id}")
 def plex_pin_status(pin_id: int) -> dict[str, Any]:
-    """Check whether the code has been approved yet.
+    """Check whether the code has been approved.
 
-    Returns the token when it is ready. The frontend holds it only long enough to test the
-    connection and write it into config.yml; nothing is persisted server-side.
+    On success the token is stored in the session and *not* returned: the browser never
+    needs to see it, since every Plex call is made by the backend.
     """
     try:
         token = plex_client.poll_pin(pin_id)
     except plex_client.PlexError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    return {"linked": token is not None, "token": token}
+
+    if token is None:
+        return {"linked": False, "connection": connections.current().public()}
+
+    connections.set_token(token)
+    session = connections.current()
+
+    # Offer the account's servers straight away; picking an address is the next thing the
+    # user has to do, and they should not need to know their own local IP.
+    servers: list[dict[str, Any]] = []
+    try:
+        servers = plex_client.list_servers(token)
+    except plex_client.PlexError:
+        pass
+    if servers and not session.url:
+        first = servers[0]["connections"]
+        if first:
+            session.url = first[0]["uri"]
+
+    return {"linked": True, "servers": servers, "connection": session.public()}
 
 
 @router.post("/plex/servers")
-def plex_servers(request: TokenRequest) -> dict[str, Any]:
-    """Servers reachable by this account, so the user need not know their local URL."""
+def plex_servers() -> dict[str, Any]:
+    """Servers reachable by the held token."""
+    session = connections.current()
+    if not session.token:
+        raise HTTPException(status_code=400, detail="Not signed in to Plex.")
     try:
-        return {"servers": plex_client.list_servers(request.token)}
+        return {"servers": plex_client.list_servers(session.token)}
     except plex_client.PlexError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @router.post("/plex/test")
-def plex_test(request: ConnectionRequest) -> dict[str, Any]:
-    try:
-        info = plex_client.test_connection(request.url, request.token)
-    except plex_client.PlexError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"name": info.name, "version": info.version, "platform": info.platform}
+def plex_test(request: UrlRequest) -> dict[str, Any]:
+    """Verify the connection and discover libraries in one step.
 
+    Both are wanted together every time, and doing them in one call means the session's
+    view of the server can never be half-updated.
+    """
+    session = connections.current()
+    url = (request.url or session.url or "").strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="A Plex server address is required.")
+    if not session.token:
+        raise HTTPException(status_code=400, detail="Sign in to Plex, or paste a token first.")
 
-@router.post("/plex/libraries")
-def plex_libraries(request: ConnectionRequest) -> dict[str, Any]:
+    session.url = url
     try:
-        return {"libraries": plex_client.discover_libraries(request.url, request.token)}
+        info = plex_client.test_connection(url, session.token)
+        libraries = plex_client.discover_libraries(url, session.token)
     except plex_client.PlexError as exc:
+        session.plex_error = str(exc)
+        session.server_name = None
+        session.libraries = []
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    session.server_name = info.name
+    session.server_version = info.version
+    session.libraries = libraries
+    session.plex_error = None
+    return session.public()
 
 
 @router.post("/tmdb/test")
 def tmdb_test(request: TmdbRequest) -> dict[str, Any]:
+    session = connections.current()
     try:
-        return plex_client.test_tmdb(request.apikey)
+        plex_client.test_tmdb(request.apikey)
+    except plex_client.PlexError as exc:
+        session.tmdb_ok = False
+        session.tmdb_error = str(exc)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    session.apikey = request.apikey
+    session.tmdb_ok = True
+    session.tmdb_error = None
+    return session.public()
+
+
+@router.post("/connections/save")
+def save_connections(request: SaveConnectionsRequest) -> dict[str, Any]:
+    """Write the session's connection details into the config.
+
+    Each value goes in as its own surgical edit, so the rest of the file -- comments
+    included -- is untouched.
+    """
+    session = connections.current()
+    written: list[str] = []
+
+    def mutate(text: str) -> str:
+        nonlocal written
+        updated = text
+        if session.url:
+            updated = documents.set_value(updated, ["plex", "url"], session.url)
+            written.append("plex.url")
+        if session.token:
+            updated = documents.set_value(updated, ["plex", "token"], session.token)
+            written.append("plex.token")
+        if session.apikey:
+            updated = documents.set_value(updated, ["tmdb", "apikey"], session.apikey)
+            written.append("tmdb.apikey")
+        return updated
+
+    result = _apply(request.config, mutate)
+    return {**result, "written": written}
+
+
+class PreviewRequest(BaseModel):
+    library: str
+    definition: dict[str, Any]
+
+
+@router.post("/preview")
+def preview_collection(request: PreviewRequest) -> dict[str, Any]:
+    """Show which library items a Plex-native definition would match."""
+    try:
+        result = preview.preview_definition(request.library, request.definition)
+    except preview.PreviewUnsupported as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except plex_client.PlexError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {
+        "total": result.total,
+        "items": result.items,
+        "applied": result.applied,
+        "skipped": result.skipped,
+        "truncated": result.truncated,
+    }
+
+
+@router.post("/preview/supported")
+def preview_supported(request: PreviewRequest) -> dict[str, Any]:
+    """Whether a definition could be previewed, without contacting Plex."""
+    ok, blocking = preview.previewable(request.definition)
+    return {"previewable": ok, "blocking": blocking}
+
+
+class SnippetRequest(BaseModel):
+    text: str
+    key: str | None = None
+
+
+@router.post("/yaml/parse")
+def parse_snippet(request: SnippetRequest) -> dict[str, Any]:
+    """Parse a YAML snippet into plain data.
+
+    Used when the UI offers "use this example": the snippet is Kometa's own text, and
+    parsing it here avoids shipping a YAML parser to the browser -- where the npm `yaml`
+    package collides with monaco's YAML grammar under Vite (see frontend/vite.config.ts).
+    """
+    try:
+        data = loads(request.text)
+    except YAMLError as exc:
+        raise HTTPException(status_code=400, detail=f"Could not parse snippet: {exc}") from exc
+
+    value = data
+    if request.key and isinstance(data, dict) and request.key in data:
+        value = data[request.key]
+    return {"value": _plain(value)}
 
 
 @router.post("/validate")

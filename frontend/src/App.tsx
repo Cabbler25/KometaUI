@@ -4,7 +4,8 @@ import { ConnectionsView } from './components/ConnectionsView'
 import { DefaultsBrowser } from './components/DefaultsBrowser'
 import { Editor } from './components/Editor'
 import { FileTree } from './components/FileTree'
-import { NewCollectionDialog } from './components/NewCollectionDialog'
+import { NewDefinitionDialog, type DefinitionKind } from './components/NewDefinitionDialog'
+import { SettingsView } from './components/SettingsView'
 import { ValidationPanel } from './components/ValidationPanel'
 import { WorkspaceOpener } from './components/WorkspaceOpener'
 import {
@@ -12,14 +13,14 @@ import {
   api,
   type Catalog,
   type ConfigCandidate,
+  type ConnectionState,
   type FileNode,
   type FileReference,
-  type PlexLibrary,
   type Status,
   type ValidationResult,
 } from './lib/api'
 
-type View = 'files' | 'defaults' | 'connections'
+type View = 'files' | 'defaults' | 'settings' | 'connections'
 
 interface OpenFile {
   path: string
@@ -42,9 +43,10 @@ export default function App() {
   const [toast, setToast] = useState<{ text: string; tone: 'ok' | 'bad' } | null>(null)
   const [view, setView] = useState<View>('files')
   const [catalog, setCatalog] = useState<Catalog | null>(null)
-  const [creating, setCreating] = useState(false)
-  // Populated once Plex is reachable; lets the builder filter to the library's real type.
-  const [plexLibraries, setPlexLibraries] = useState<PlexLibrary[]>([])
+  const [creating, setCreating] = useState<DefinitionKind | null>(null)
+  // Held on the backend so it survives a reload; mirrored here for rendering. Its
+  // libraries let the builder filter to each file's real library type.
+  const [connection, setConnection] = useState<ConnectionState | null>(null)
 
   const notify = useCallback((text: string, tone: 'ok' | 'bad' = 'ok') => {
     setToast({ text, tone })
@@ -86,6 +88,15 @@ export default function App() {
   useEffect(() => {
     loadReferences()
   }, [loadReferences])
+
+  // Restore the connection the backend is holding. Passing the config lets it adopt a
+  // token already saved there, so an existing Kometa user never has to sign in.
+  useEffect(() => {
+    api
+      .connections(activeConfig)
+      .then(setConnection)
+      .catch(() => undefined)
+  }, [activeConfig])
 
   const openFile = useCallback(
     async (path: string) => {
@@ -194,10 +205,27 @@ export default function App() {
     return [...new Set(referencedCollections)]
   }, [references])
 
+  const overlayTargets = useMemo(() => {
+    const files = references
+      .filter((r) => r.listKey === 'overlay_files' && r.relative)
+      .map((r) => r.relative!)
+    return [...new Set(files)]
+  }, [references])
+
+  // Which library each definition file belongs to, so a preview knows what to search.
+  const libraryByFile = useMemo(() => {
+    const out: Record<string, string> = {}
+    for (const ref of references) {
+      if (!ref.relative || !ref.library) continue
+      out[ref.relative] ??= ref.library
+    }
+    return out
+  }, [references])
+
   // Which library type each collection file serves, so the builder can hide builders that
   // cannot apply to it. Needs Plex: the config alone rarely states `library_type`.
   const libraryTypeByFile = useMemo(() => {
-    const typeByLibrary = new Map(plexLibraries.map((l) => [l.name, l.libraryType]))
+    const typeByLibrary = new Map((connection?.libraries ?? []).map((l) => [l.name, l.libraryType]))
     const out: Record<string, string> = {}
     for (const ref of references) {
       if (ref.listKey !== 'collection_files' || !ref.relative || !ref.library) continue
@@ -206,7 +234,7 @@ export default function App() {
       if (type) out[ref.relative] = ref.relative in out && out[ref.relative] !== type ? 'any' : type
     }
     return out
-  }, [references, plexLibraries])
+  }, [references, connection])
 
   if (!status) return <Centered>Connecting to the backend…</Centered>
   if (!status.workspace) return <WorkspaceOpener onOpened={loadWorkspace} />
@@ -219,19 +247,32 @@ export default function App() {
         activeConfig={activeConfig}
         dirty={dirty}
         view={view}
-        canCreate={Boolean(catalog) && collectionTargets.length > 0}
+        canCreateCollection={Boolean(catalog) && collectionTargets.length > 0}
+        canCreateOverlay={Boolean(catalog) && overlayTargets.length > 0}
         onSelectView={setView}
         onSelectConfig={setActiveConfig}
         onToggleWrites={toggleWrites}
         onSave={save}
-        onNewCollection={() => setCreating(true)}
+        onNew={setCreating}
       />
 
-      {view === 'connections' ? (
+      {view === 'settings' ? (
+        <SettingsView
+          config={activeConfig}
+          libraries={libraries}
+          canWrite={status.workspace.allowWrites}
+          onSaved={() => {
+            loadReferences()
+            if (file?.path === activeConfig) openFile(activeConfig)
+          }}
+          notify={notify}
+        />
+      ) : view === 'connections' ? (
         <ConnectionsView
           config={activeConfig}
           canWrite={status.workspace.allowWrites}
-          onLibrariesDiscovered={setPlexLibraries}
+          connection={connection}
+          onConnectionChange={setConnection}
           onConfigChanged={() => {
             loadWorkspace()
             loadReferences()
@@ -305,11 +346,13 @@ export default function App() {
       )}
 
       {creating && catalog && (
-        <NewCollectionDialog
+        <NewDefinitionDialog
           catalog={catalog}
-          targets={collectionTargets}
+          kind={creating}
+          targets={creating === 'overlay' ? overlayTargets : collectionTargets}
           libraryTypeByFile={libraryTypeByFile}
-          onClose={() => setCreating(false)}
+          libraryByFile={libraryByFile}
+          onClose={() => setCreating(null)}
           onCreated={(path) => {
             setView('files')
             openFile(path)
@@ -340,24 +383,26 @@ function Header({
   activeConfig,
   dirty,
   view,
-  canCreate,
+  canCreateCollection,
+  canCreateOverlay,
   onSelectView,
   onSelectConfig,
   onToggleWrites,
   onSave,
-  onNewCollection,
+  onNew,
 }: {
   status: Status
   configs: ConfigCandidate[]
   activeConfig: string | null
   dirty: boolean
   view: View
-  canCreate: boolean
+  canCreateCollection: boolean
+  canCreateOverlay: boolean
   onSelectView: (view: View) => void
   onSelectConfig: (path: string) => void
   onToggleWrites: () => void
   onSave: () => void
-  onNewCollection: () => void
+  onNew: (kind: DefinitionKind) => void
 }) {
   const workspace = status.workspace!
   const engine = status.validationEngine
@@ -367,7 +412,7 @@ function Header({
       <span className="font-semibold text-ink-100">KometaUI</span>
 
       <nav className="flex shrink-0 overflow-hidden rounded border border-ink-700">
-        {(['files', 'defaults', 'connections'] as const).map((tab) => (
+        {(['files', 'defaults', 'settings', 'connections'] as const).map((tab) => (
           <button
             key={tab}
             type="button"
@@ -381,19 +426,36 @@ function Header({
         ))}
       </nav>
 
-      <button
-        type="button"
-        onClick={onNewCollection}
-        disabled={!canCreate || !workspace.allowWrites}
-        className="shrink-0 whitespace-nowrap rounded border border-ink-700 px-2 py-0.5 text-ink-200 hover:bg-ink-800 disabled:opacity-30"
-        title={
-          !workspace.allowWrites
-            ? 'Unlock writes to create collections'
-            : 'Build a collection from Kometa’s builders'
-        }
-      >
-        + Collection
-      </button>
+      <div className="flex shrink-0 gap-1">
+        <button
+          type="button"
+          onClick={() => onNew('collection')}
+          disabled={!canCreateCollection || !workspace.allowWrites}
+          className={newButtonClass}
+          title={
+            !workspace.allowWrites
+              ? 'Unlock writes to create collections'
+              : !canCreateCollection
+                ? 'This config references no collection files yet'
+                : 'Build a collection from Kometa’s builders'
+          }
+        >
+          + Collection
+        </button>
+        <button
+          type="button"
+          onClick={() => onNew('overlay')}
+          disabled={!canCreateOverlay || !workspace.allowWrites}
+          className={newButtonClass}
+          title={
+            !canCreateOverlay
+              ? 'This config references no overlay files yet'
+              : 'Build an overlay from Kometa’s builders'
+          }
+        >
+          + Overlay
+        </button>
+      </div>
 
       <span className="min-w-0 flex-1 truncate font-mono text-ink-500" title={workspace.path}>
         {workspace.path}
@@ -454,6 +516,9 @@ function Header({
     </header>
   )
 }
+
+const newButtonClass =
+  'whitespace-nowrap rounded border border-ink-700 px-2 py-0.5 text-ink-200 hover:bg-ink-800 disabled:opacity-30'
 
 function Chip({
   children,

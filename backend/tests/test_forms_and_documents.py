@@ -191,3 +191,63 @@ class TestSetValue:
     def test_removes_a_key(self):
         result = documents.remove_value(CONFIG, ["settings", "cache"])
         assert "cache" not in loads(result)["settings"]
+
+
+class TestMergeMapping:
+    """Saving a form. The mapping must end up matching the submitted values exactly,
+    while touching as few lines as possible."""
+
+    SETTINGS = (
+        "# top\n"
+        "settings:\n"
+        "  cache: true          # keep this note\n"
+        "  minimum_items: 1\n"
+        "  sync_mode: append\n"
+    )
+
+    def test_changes_only_the_edited_key(self):
+        result = documents.merge_mapping(
+            self.SETTINGS,
+            ["settings"],
+            {"cache": True, "minimum_items": 5, "sync_mode": "append"},
+        )
+        before, after = self.SETTINGS.splitlines(), result.splitlines()
+        differing = [i for i, (a, b) in enumerate(zip(before, after)) if a != b]
+        assert len(differing) == 1
+        assert "# keep this note" in result
+        assert loads(result)["settings"]["minimum_items"] == 5
+
+    def test_adds_a_key_that_was_not_set(self):
+        result = documents.merge_mapping(
+            self.SETTINGS,
+            ["settings"],
+            {"cache": True, "minimum_items": 1, "sync_mode": "append", "show_missing": False},
+        )
+        assert loads(result)["settings"]["show_missing"] is False
+        assert "# top" in result
+
+    def test_clearing_a_field_removes_the_key(self):
+        """A form submits the complete intended state, so an absent key means 'unset'."""
+        result = documents.merge_mapping(
+            self.SETTINGS, ["settings"], {"cache": True, "minimum_items": 1}
+        )
+        assert "sync_mode" not in loads(result)["settings"]
+        assert loads(result)["settings"]["cache"] is True
+
+    def test_no_changes_leaves_the_text_untouched(self):
+        result = documents.merge_mapping(
+            self.SETTINGS,
+            ["settings"],
+            {"cache": True, "minimum_items": 1, "sync_mode": "append"},
+        )
+        assert result == self.SETTINGS
+
+    def test_creates_the_mapping_when_absent(self):
+        text = "libraries:\n  Movies:\n    collection_files: []\n"
+        result = documents.merge_mapping(text, ["libraries", "Movies", "operations"], {"assets_for_all": True})
+        assert loads(result)["libraries"]["Movies"]["operations"] == {"assets_for_all": True}
+
+    def test_emptying_everything_leaves_a_valid_mapping(self):
+        """Removing the last key must not leave a bare `settings:` that parses as null."""
+        result = documents.merge_mapping(self.SETTINGS, ["settings"], {})
+        assert loads(result)["settings"] == {}

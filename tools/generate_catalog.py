@@ -370,7 +370,33 @@ def build_plex_tables(reader: SourceReader) -> dict[str, Any]:
     return out
 
 
-def build_defaults(schema: dict[str, Any]) -> dict[str, Any]:
+def _default_files_on_disk(source: Path) -> dict[str, dict[str, str]]:
+    """Index the default YAML files Kometa actually ships, by kind and name.
+
+    The schema's enum and the shipped files can drift: Kometa 2.4.6 still lists
+    ``flixpatrol`` as a valid default, but no ``flixpatrol.yml`` exists any more. Offering
+    a default that Kometa will fail to load is worse than omitting it, so the browser
+    filters against reality rather than trusting the enum.
+    """
+    collection_dirs = ["award", "chart", "both", "movie", "show"]
+    index: dict[str, dict[str, str]] = {"collections": {}, "overlays": {}, "playlists": {}}
+
+    for folder in collection_dirs:
+        for path in sorted((source / "defaults" / folder).glob("*.yml")):
+            # Both movie/ and show/ define e.g. decade.yml; either presence is enough.
+            index["collections"].setdefault(path.stem, f"{folder}/{path.name}")
+
+    for path in sorted((source / "defaults" / "overlays").glob("*.yml")):
+        index["overlays"][path.stem] = f"overlays/{path.name}"
+
+    playlist = source / "defaults" / "playlist.yml"
+    if playlist.exists():
+        index["playlists"]["playlist"] = "playlist.yml"
+
+    return index
+
+
+def build_defaults(schema: dict[str, Any], source: Path) -> dict[str, Any]:
     """Read the Defaults catalogue out of the config schema.
 
     Two shapes appear here. Collection defaults enumerate every name and then bind each
@@ -380,16 +406,24 @@ def build_defaults(schema: dict[str, Any]) -> dict[str, Any]:
     render the most specific form available for each entry.
     """
     definitions = schema.get("definitions", {})
+    on_disk = _default_files_on_disk(source)
 
-    def collect(definition_name: str) -> dict[str, Any]:
+    def collect(kind: str, definition_name: str) -> dict[str, Any]:
         node = definitions.get(definition_name, {})
         names = node.get("properties", {}).get("default", {}).get("enum", [])
         shared = node.get("properties", {}).get("template_variables", {}).get("$ref")
         bindings = _walk_if_chain(node.get("allOf", []))
+        files = on_disk.get(kind, {})
+        available = [name for name in names if name in files]
         return {
-            "names": names,
+            # Only defaults that both the schema allows and Kometa actually ships.
+            "names": available,
+            "files": {name: files[name] for name in available},
+            # Listed by the schema but no longer shipped -- kept for diagnostics so an
+            # existing config referencing one can be explained rather than silently ignored.
+            "declared_but_missing": [name for name in names if name not in files],
             # Per-default definition, where the schema distinguishes them.
-            "template_variable_refs": bindings,
+            "template_variable_refs": {k: v for k, v in bindings.items() if k in files},
             # Fallback definition used when a default has no specific binding.
             "shared_template_variable_ref": shared.rsplit("/", 1)[-1] if shared else None,
             "extra_properties": [
@@ -400,9 +434,9 @@ def build_defaults(schema: dict[str, Any]) -> dict[str, Any]:
         }
 
     return {
-        "collections": collect("kometa-default-collection-path"),
-        "overlays": collect("kometa-default-overlay-path"),
-        "playlists": collect("kometa-default-playlist-path"),
+        "collections": collect("collections", "kometa-default-collection-path"),
+        "overlays": collect("overlays", "kometa-default-overlay-path"),
+        "playlists": collect("playlists", "kometa-default-playlist-path"),
     }
 
 
@@ -508,7 +542,7 @@ def main() -> int:
     builder_groups = build_constant_group(reader, "builder", BUILDER_CONSTANTS)
     detail_groups = build_constant_group(reader, "builder", DETAIL_CONSTANTS)
     plex_tables = build_plex_tables(reader)
-    defaults = build_defaults(config_schema)
+    defaults = build_defaults(config_schema, source)
 
     collection_props = build_schema_property_index(collection_schema, "collection-definition")
 

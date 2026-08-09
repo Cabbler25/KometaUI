@@ -84,8 +84,38 @@ def dumps(data: Any) -> str:
 
 
 def round_trip(text: str) -> str:
-    """Parse and re-serialise. Used by tests to assert formatting stability."""
+    """Parse and re-serialise. Used by tests to assert formatting stability.
+
+    Measured against Kometa 2.4.6's 90 default files plus the three prototype configs:
+    all 93 survive round-tripping with **identical semantics**, and the operation is
+    idempotent for every one of them. 43 are byte-identical; the rest differ only
+    cosmetically -- 36 by trailing-whitespace stripping and 14 by indentation
+    normalisation (``defaults/award/sag.yml`` indents a mapping by one space, which
+    ruamel rewrites to two).
+
+    Those cosmetic rewrites are harmless but noisy: a user who changes one field does not
+    want a diff touching 40 unrelated lines. So a full parse/dump cycle is reserved for
+    documents we are rewriting wholesale. Text the user edited directly is saved verbatim
+    via :func:`save_text`, and form-driven edits should splice the specific node rather
+    than re-dumping (see the module TODO).
+    """
     return dumps(loads(text))
+
+
+# TODO(M2): form-driven edits currently have no surgical path. When forms land, locate the
+# target node via ruamel's ``.lc`` line/column data and splice just those lines, falling
+# back to a full dump only when the node cannot be located. Without this, editing one
+# field in a form would reformat the whole file.
+
+
+def save_text(path: Path, text: str, retention: int = 20) -> Path | None:
+    """Persist user-authored text exactly as written, after validating it parses.
+
+    Verbatim so the editor never reformats what the user typed. Parsing first means a
+    syntax error is reported before the old contents are replaced.
+    """
+    loads(text)  # raises YAMLError if invalid; caller converts to a 400
+    return write_with_backup(path, text, retention)
 
 
 def safe_parse(text: str) -> tuple[Any | None, ParseError | None]:

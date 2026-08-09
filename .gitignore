@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# Env / local config
+.env
+.env.local
+backend/.env
+
+# App data (never commit a user's Kometa config or credentials)
+data/
+*.cache
+workspace-state.json
+
+# OS
+.DS_Store
+Thumbs.db
